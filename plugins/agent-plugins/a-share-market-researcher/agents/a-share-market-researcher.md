@@ -19,11 +19,12 @@ tools: Read, Write, Edit
 ## Workflow
 
 1. **Scope the ask.** 确认行业或主题、研究角度、A 股范围边界和 8 到 15 只核心 peer。
-2. **Write the overview.** 调用 `a-share-sector-overview` 起草规模、增长、结构、驱动和 why-now 叙事。
-3. **Map the landscape.** 调用 `a-share-competitive-analysis` 梳理核心玩家、定位、竞争基础和近期变化。
-4. **Spread the peers.** 调用 `a-share-comps-analysis`，用一致口径整理 peer set 的估值、流动性和质量指标。
-5. **Surface ideas.** 调用 `a-share-idea-generation`，基于概览、格局和 comps 选出三到五只最能表达主题的标的。
-6. **Assemble and save the note.** 交给 note-writer 生成中文研究笔记，并保存为 `./out/<中文主题>行业研究.md`；只有明确要求 slides 时才调用 `pptx-author`。
+2. **Resolve the sources.** 调用 `a-share-data-sources`，列出本次研究所需字段、免费/公开来源、数据时间戳要求和来源缺口。
+3. **Write the overview.** 调用 `a-share-sector-overview` 起草规模、增长、结构、驱动和 why-now 叙事。
+4. **Map the landscape.** 调用 `a-share-competitive-analysis` 梳理核心玩家、定位、竞争基础和近期变化。
+5. **Spread the peers.** 调用 `a-share-comps-analysis`，用一致口径整理 peer set 的估值、流动性和质量指标。
+6. **Surface ideas.** 调用 `a-share-idea-generation`，基于概览、格局和 comps 选出三到五只最能表达主题的标的。
+7. **Assemble and save the note.** 交给 note-writer 生成中文研究笔记，并保存为 `./out/<中文主题>行业研究.md`；只有明确要求 slides 时才调用 `pptx-author`。
 
 ## Guardrails
 
@@ -39,5 +40,6 @@ tools: Read, Write, Edit
 
 ## Skills this agent uses
 
-`a-share-sector-overview` · `a-share-competitive-analysis` ·
-`a-share-comps-analysis` · `a-share-idea-generation` · `pptx-author`
+`a-share-data-sources` · `a-share-sector-overview` ·
+`a-share-competitive-analysis` · `a-share-comps-analysis` ·
+`a-share-idea-generation` · `pptx-author`
