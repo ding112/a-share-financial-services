@@ -1,0 +1,8 @@
+{
+  "name": "china-equity-trading",
+  "version": "0.1.0",
+  "description": "A-share short-term research tools: topic screening, daily market briefs, and event calendars",
+  "author": {
+    "name": "Anthropic FSI"
+  }
+}

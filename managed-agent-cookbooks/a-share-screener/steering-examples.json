@@ -1,0 +1,14 @@
+[
+  {
+    "event": "筛选今天机器人题材相关 A 股",
+    "description": "Topic-driven A-share candidate pool with quant screen and risk check"
+  },
+  {
+    "event": "生成明天 A 股盘前简报，并列出需要观察的题材方向",
+    "description": "Daily brief plus watchlist directions"
+  },
+  {
+    "event": "列出下周有业绩预告、解禁或减持风险的股票",
+    "description": "Event-calendar and risk-filter workflow"
+  }
+]

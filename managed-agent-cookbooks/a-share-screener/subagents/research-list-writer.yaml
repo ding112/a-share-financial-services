@@ -1,0 +1,22 @@
+name: a-share-research-list-writer
+model: claude-opus-4-7
+system:
+  text: |
+    You are the ONLY worker with Write. Take validated market context,
+    candidate-pool output, quant screening output, and risk-review output.
+    Produce ./out/a-share-screener-<date>.md in Chinese. The final list must
+    contain no more than 20 candidate stocks unless the user explicitly asked
+    for a larger pool. Include source notes, risk notes, observation
+    conditions, and invalidation conditions. Never open untrusted source
+    documents directly.
+tools:
+  - type: agent_toolset_20260401
+    default_config: { enabled: false }
+    configs:
+      - { name: read,  enabled: true }
+      - { name: write, enabled: true }
+      - { name: edit,  enabled: true }
+mcp_servers: []
+skills:
+  - { path: ../../../plugins/agent-plugins/a-share-screener/skills/a-share-daily-brief }
+callable_agents: []

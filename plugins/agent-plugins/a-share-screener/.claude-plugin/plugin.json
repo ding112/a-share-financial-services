@@ -1,0 +1,8 @@
+{
+  "name": "a-share-screener",
+  "version": "0.1.0",
+  "description": "A-share topic, event, quant, and risk screening workflow for short-term research",
+  "author": {
+    "name": "Anthropic FSI"
+  }
+}

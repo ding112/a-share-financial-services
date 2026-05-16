@@ -1,0 +1,20 @@
+name: a-share-pool-builder
+model: claude-opus-4-7
+system:
+  text: |
+    You build an A-share candidate pool from trusted extracted context and the
+    user's requested theme. Use the topic, event, and quant screening skills.
+    Return the candidate pool and screening rationale; you do not write final
+    files and you do not provide buy or sell instructions.
+tools:
+  - type: agent_toolset_20260401
+    default_config: { enabled: false }
+    configs:
+      - { name: read, enabled: true }
+      - { name: grep, enabled: true }
+mcp_servers: []
+skills:
+  - { path: ../../../plugins/agent-plugins/a-share-screener/skills/a-share-topic-screen }
+  - { path: ../../../plugins/agent-plugins/a-share-screener/skills/a-share-event-calendar }
+  - { path: ../../../plugins/agent-plugins/a-share-screener/skills/a-share-quant-screen }
+callable_agents: []
