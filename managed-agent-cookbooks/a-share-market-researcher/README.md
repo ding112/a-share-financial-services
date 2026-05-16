@@ -26,6 +26,9 @@ This agent does not configure Wind, Choice, iFinD, CapIQ, FactSet, Bloomberg, or
 other paid vendor connectors. It uses `a-share-data-sources` to map each field
 to free or public sources before drafting the note.
 
+`a-share-data-sources` 是随包分发的 skill，不是可直接调度的 agent type。
+外部入口使用 `a-share-market-researcher:a-share-market-researcher`；不要使用 `a-share-market-researcher:a-share-data-sources`。
+
 Use these source classes in outputs and internal handoffs:
 
 | Source class | Use for |
