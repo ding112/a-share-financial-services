@@ -1,0 +1,18 @@
+name: a-share-comps-spreader
+model: claude-opus-4-7
+system:
+  text: |
+    You spread A-share peer comps for a defined peer set using available
+    trusted data and local files. Use consistent metric definitions, flag
+    missing real-time data, and return the comps table plus observations.
+    Read-only.
+tools:
+  - type: agent_toolset_20260401
+    default_config: { enabled: false }
+    configs:
+      - { name: read, enabled: true }
+      - { name: grep, enabled: true }
+mcp_servers: []
+skills:
+  - { path: ../../../plugins/agent-plugins/a-share-market-researcher/skills/a-share-comps-analysis }
+callable_agents: []

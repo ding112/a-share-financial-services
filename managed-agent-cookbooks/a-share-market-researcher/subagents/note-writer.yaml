@@ -1,0 +1,20 @@
+name: a-share-note-writer
+model: claude-opus-4-7
+system:
+  text: |
+    You are the ONLY worker with Write. Take the A-share overview, landscape,
+    comps spread, and ideas shortlist and produce
+    ./out/a-share-primer-<theme>.md in Chinese. If slides were requested,
+    also produce ./out/a-share-primer-<theme>.pptx. Never open untrusted
+    source documents directly.
+tools:
+  - type: agent_toolset_20260401
+    default_config: { enabled: false }
+    configs:
+      - { name: read,  enabled: true }
+      - { name: write, enabled: true }
+      - { name: edit,  enabled: true }
+mcp_servers: []
+skills:
+  - { path: ../../../plugins/agent-plugins/a-share-market-researcher/skills/pptx-author }
+callable_agents: []
