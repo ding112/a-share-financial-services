@@ -29,6 +29,27 @@ to free or public sources before drafting the note.
 `a-share-data-sources` 是随包分发的 skill，不是可直接调度的 agent type。
 外部入口使用 `a-share-market-researcher:a-share-market-researcher`；不要使用 `a-share-market-researcher:a-share-data-sources`。
 
+The current managed-agent template is read-only for source data: it can read
+user-provided files and extracts, but it does not execute the Tencent, AkShare,
+or Eastmoney network calls by default. When an upstream workflow provides a data
+package generated from those sources, classify it as `public_market_data` and
+preserve the original source name, access time, report period, and unit.
+
+Guide-backed free sources can fill these gaps:
+
+| Source | Filled data gap | Source class |
+|---|---|---|
+| Tencent quote API | Latest price, open, previous close, high, low, volume, amount, turnover, dynamic PE, total market cap, and float market cap. | `public_market_data` |
+| Tonghuashun via AkShare financial abstract | Five-year revenue, profit, non-recurring profit, growth rates, EPS, BPS, operating cash flow per share, gross margin, net margin, ROE, and liability ratio. | `public_market_data` |
+| Eastmoney data center | Income statement, balance sheet, and cash-flow statement fields. | `public_market_data` |
+| Calculated fields | Shares, CAGR, EV, EV/Revenue, and EV/EBITDA when every input is sourced. | `public_market_data` with formula in the basis note |
+
+The same guide does not fill industry size, industry growth, penetration,
+orders, capacity, customers, technology route, risk-event announcements, capital
+flow, margin financing, northbound holdings, or historical 5-day and 20-day
+returns. Keep those fields as `missing_source` unless another reliable source is
+provided.
+
 Use these source classes in outputs and internal handoffs:
 
 | Source class | Use for |
