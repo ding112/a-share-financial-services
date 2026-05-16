@@ -14,5 +14,6 @@ tools:
       - { name: grep, enabled: true }
 mcp_servers: []
 skills:
+  - { path: ../../../plugins/agent-plugins/a-share-market-researcher/skills/a-share-data-sources }
   - { path: ../../../plugins/agent-plugins/a-share-market-researcher/skills/a-share-comps-analysis }
 callable_agents: []

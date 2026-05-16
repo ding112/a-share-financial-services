@@ -27,11 +27,21 @@ output_schema:
       maxItems: 100
       items:
         type: object
-        required: [claim, source, verification_status]
+        required: [claim, source, source_type, verification_status]
         additionalProperties: false
         properties:
           claim: { type: string, maxLength: 256 }
           source: { type: string, maxLength: 128 }
+          source_type:
+            type: string
+            enum:
+              - official_disclosure
+              - official_statistics
+              - public_market_data
+              - company_public_material
+              - third_party
+              - user_provided
+              - missing_source
           verification_status:
             type: string
             enum: [verified, user_provided, missing_source]
