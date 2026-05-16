@@ -15,6 +15,9 @@ not a trading recommendation.
 - One-line angle from the analyst.
 - Universe boundary, such as A-share listed companies, STAR Market, ChiNext,
   Northbound-heavy names, or a user-provided stock pool.
+- Source plan from `a-share-data-sources`, including official disclosure,
+  official statistics, public market data, company public material,
+  third-party, user-provided, and missing-source classifications.
 - Available source material, including filings, announcements, industry
   reports, exchange notices, policy documents, and user notes.
 
@@ -28,7 +31,9 @@ not a trading recommendation.
    or demand driver that makes the theme relevant now.
 4. Identify the 8 to 15 A-share listed names that define the investable
    universe and separate core exposure from weak thematic exposure.
-5. Mark every unsourced number as `来源缺失` instead of estimating it.
+5. For each market-size, growth, penetration, policy, and investable-universe
+   claim, add source type, source name, timestamp, and口径 when available.
+6. Mark every unsourced number as `来源缺失` instead of estimating it.
 
 ## Output format
 
