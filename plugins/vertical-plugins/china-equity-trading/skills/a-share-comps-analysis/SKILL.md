@@ -12,6 +12,8 @@ market data.
 ## Inputs
 
 - Peer set from `a-share-competitive-analysis`.
+- Source plan from `a-share-data-sources`, including the mapped free or public
+  source for each required field.
 - Available market data, historical prices, financial metrics, and source
   timestamps.
 - Analyst-provided universe or exclusions.
@@ -43,6 +45,15 @@ For each company, include these fields when sourced:
 - `数据时间戳`
 - `来源`
 - `异常值标记`
+
+## Free-source mapping
+
+Use `a-share-data-sources` before filling the table. Price, liquidity,
+valuation, and historical return fields should come from public market data such
+as AkShare-backed public sources when available. Financial quality fields should
+come from official disclosures, company reports, or AkShare financial indicators
+when available. Business exposure evidence should come from official disclosure
+or company public material before third-party research.
 
 ## Workflow
 

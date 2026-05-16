@@ -14,6 +14,7 @@ instructions.
 - Sector overview.
 - Competitive landscape.
 - Peer comps spread.
+- Source plan and source gaps from `a-share-data-sources`.
 - Risk flags, event calendar, and analyst constraints when available.
 
 ## Workflow
@@ -21,8 +22,8 @@ instructions.
 1. Select three to five A-share names that best express the theme.
 2. For each name, write a one-line thesis hook tied to business exposure,
    industry structure, valuation dispersion, quality, liquidity, or catalyst.
-3. Include the strongest evidence and the most important caveat for each
-   shortlisted name.
+3. Include the strongest evidence, source type, source timestamp, and the most
+   important caveat for each shortlisted name.
 4. Exclude names with unverifiable exposure, severe risk flags, suspension,
    or missing core data from the main shortlist.
 5. Place uncertain names in `待验证观察名单` instead of the main shortlist.

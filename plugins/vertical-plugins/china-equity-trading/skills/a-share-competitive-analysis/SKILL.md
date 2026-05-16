@@ -13,6 +13,8 @@ their exposure differs.
 
 - A-share sector or theme.
 - Candidate universe from `a-share-sector-overview` or analyst input.
+- Source plan from `a-share-data-sources`, especially official disclosure for
+  business exposure and public market data for market/valuation context.
 - Company announcements, filings, investor relations material, and reliable
   third-party research excerpts.
 
@@ -24,7 +26,10 @@ their exposure differs.
 3. Flag recent moves such as capacity expansion, large orders, policy
    qualification, mergers, buybacks, capital raises, or strategic cooperation.
 4. Identify where the market narrative may overstate a company's exposure.
-5. Mark missing source support as `待验证` and keep weakly supported names
+5. Classify each exposure claim as `official_disclosure`,
+   `company_public_material`, `third_party`, `user_provided`, or
+   `missing_source`.
+6. Mark missing source support as `待验证` and keep weakly supported names
    outside the core peer set.
 
 ## Output format
