@@ -33,8 +33,9 @@ comps spreading, and writing separate:
 | **`note-writer`** (Write-holder) | No | `Read`, `Write`, `Edit` | None |
 
 `sector-reader` returns length-capped, schema-validated JSON.
-`note-writer` produces `./out/a-share-primer-<theme>.md` and optional slides
-only when requested.
+`note-writer` produces a Chinese-named Markdown file under `./out/`, such as
+`./out/机器人产业链行业研究.md`, and optional Chinese-named slides only when
+requested.
 
 **Handoff:** use `a-share-screener` when the user asks for short-term topic,
 event, quant, or risk screening lists. Use an equity-research workflow when a

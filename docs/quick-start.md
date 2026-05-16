@@ -19,7 +19,7 @@ claude plugin install a-share-market-researcher@claude-for-financial-services
 
 ```text
 a-share-screener:a-share-screener(
-  基于“机器人+减速器”生成A股短线研究清单
+  基于“机器人+减速器”生成A股短线研究清单，并保存到 ./out/机器人减速器短线研究清单.md
 )
 ```
 
@@ -27,7 +27,7 @@ a-share-screener:a-share-screener(
 
 ```text
 a-share-market-researcher:a-share-market-researcher(
-  Primer: A股机器人产业链, angle: 减速器供给缺口
+  Primer: A股机器人产业链, angle: 减速器供给缺口。生成结果保存到 ./out/机器人产业链行业研究.md
 )
 ```
 
