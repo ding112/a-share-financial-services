@@ -20,6 +20,24 @@ export ANTHROPIC_API_KEY=sk-ant-...
 See [`steering-examples.json`](./steering-examples.json). Kick from an A-share
 research queue event, an analyst request, or a scheduled sector-primer refresh.
 
+## Free data-source policy
+
+This agent does not configure Wind, Choice, iFinD, CapIQ, FactSet, Bloomberg, or
+other paid vendor connectors. It uses `a-share-data-sources` to map each field
+to free or public sources before drafting the note.
+
+Use these source classes in outputs and internal handoffs:
+
+| Source class | Use for |
+|---|---|
+| `official_disclosure` | Company filings, exchange announcements, periodic reports, inquiry letters, and replies. |
+| `official_statistics` | National Bureau of Statistics, People's Bank of China, CSRC, exchange market data, and public index materials. |
+| `public_market_data` | AkShare-backed public market data, public行情 pages, index data, valuation snapshots, and liquidity fields. |
+| `company_public_material` | Investor relations records, earnings briefings, company websites, and public presentation material. |
+| `third_party` | Industry reports, sell-side excerpts, news, and public concept-board labels used as leads. |
+| `user_provided` | Files, exports, screenshots, or notes supplied by the analyst. |
+| `missing_source` | Fields that cannot be verified from the available free or user-provided sources. |
+
 ## Security & handoffs
 
 Third-party reports, issuer materials, announcements, news excerpts, and
