@@ -18,6 +18,8 @@ import re
 import sys
 from pathlib import Path
 
+from check_a_share_data_contract import validate_contract  # noqa: E402
+
 try:
     import yaml
 except ImportError:
@@ -208,6 +210,10 @@ for d in sorted(MANAGED.iterdir()):
     for req in ("agent.yaml", "README.md", "steering-examples.json"):
         if not (d / req).is_file():
             err(f"missing: {rel(d)}/{req}")
+
+# --- 6. A-share data source contract ---------------------------------------
+for contract_error in validate_contract():
+    err(contract_error)
 
 # --- report ----------------------------------------------------------------
 if errors:
