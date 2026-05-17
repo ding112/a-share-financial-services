@@ -131,3 +131,26 @@ a-share-market-researcher:a-share-market-researcher(
   质量字段必须降级为 来源缺失 或 口径不可比。
 )
 ```
+
+## 9) 本地公开数据预处理
+
+如果你已经在本地导出腾讯行情、AkShare 财务摘要或其他 CSV，可以先把这些
+文件整理成标准 `research-pack/`。这个脚本只读取本地文件，不访问网络。
+
+```bash
+python3 scripts/prepare_a_share_research_pack.py \
+  --input-dir fixtures/a-share-raw-exports/robotics-reducer \
+  --output-dir out/robotics-reducer-research-pack \
+  --theme 机器人产业链 \
+  --as-of 2026-05-17
+```
+
+生成后，用 `a-share-market-researcher` 读取输出目录：
+
+```text
+a-share-market-researcher:a-share-market-researcher(
+  Primer: A股机器人产业链, angle: 减速器供给缺口。
+  使用 ./out/robotics-reducer-research-pack/ 作为 research-pack 输入。
+  先列出 source_manifest.json 中的来源、数据时间、报告期或口径和缺失行为。
+)
+```
