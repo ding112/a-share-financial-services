@@ -12,8 +12,10 @@ market data.
 ## Inputs
 
 - Peer set from `a-share-competitive-analysis`.
-- Source plan from `a-share-data-sources`, including the mapped free or public
-  source for each required field.
+- Source contract output from `a-share-data-sources`, including source type,
+  source name, data time, report period or basis, verification status, and
+  missing-data behavior for every market, valuation, financial, and computed
+  field.
 - Available market data, historical prices, financial metrics, source
   timestamps, and user-provided data exports.
 - Analyst-provided universe or exclusions.
@@ -93,16 +95,17 @@ Computed fields can appear in the spread only when the inputs are present. Put
 
 ## Workflow
 
-1. Normalize stock codes and exchanges before comparing peers.
-2. Normalize units for market cap, turnover, revenue, profit, cash, debt, and
+1. Apply `a-share-data-sources` before selecting or ranking any metric.
+2. Normalize stock codes and exchanges before comparing peers.
+3. Normalize units for market cap, turnover, revenue, profit, cash, debt, and
    cash-flow fields.
-3. Keep valuation definitions consistent across the peer set.
-4. Mark suspended, ST, newly listed, loss-making, negative EBITDA, or outlier
+4. Keep valuation definitions consistent across the peer set.
+5. Mark suspended, ST, newly listed, loss-making, negative EBITDA, or outlier
    names.
-5. If real-time fields are unavailable, keep the row and write `来源缺失` in
+6. If real-time fields are unavailable, keep the row and write `来源缺失` in
    the affected cells.
-6. If a computed field lacks any input, keep the field and write `来源缺失`.
-7. Summarize what the spread implies for exposure, quality, liquidity, and
+7. If a computed field lacks any input, keep the field and write `来源缺失`.
+8. Summarize what the spread implies for exposure, quality, liquidity, and
    valuation dispersion.
 
 ## Output format

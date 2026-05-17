@@ -13,8 +13,11 @@ their exposure differs.
 
 - A-share sector or theme.
 - Candidate universe from `a-share-sector-overview` or analyst input.
-- Source plan from `a-share-data-sources`, especially official disclosure for
-  business exposure and public market data for market/valuation context.
+- Source plan from `a-share-data-sources`, including source type, source name,
+  data time, report period or basis, verification status, and missing-data
+  behavior for each fact.
+- Business-exposure evidence that meets the `a-share-data-sources` minimum
+  evidence gate for `a-share-competitive-analysis`.
 - Company announcements, filings, investor relations material, and reliable
   third-party research excerpts.
 
@@ -44,7 +47,13 @@ Return Chinese Markdown with these sections:
 
 ## Guardrails
 
-- Do not treat concept-board membership as proof of business exposure.
+- Apply the `a-share-data-sources` source hierarchy before using any claim.
+- Do not treat concept-board membership, news heat, or third-party research as
+  sufficient evidence for core business exposure.
+- Put companies with only weak exposure evidence into `待验证名单`, not the
+  core competitive landscape.
+- For each competition dimension, cite the supporting source type and source
+  name.
 - Do not rank companies by real-time performance unless verified market data
   is provided.
 - Do not provide direct trading instructions.

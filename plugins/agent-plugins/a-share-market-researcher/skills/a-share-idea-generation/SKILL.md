@@ -14,7 +14,9 @@ instructions.
 - Sector overview.
 - Competitive landscape.
 - Peer comps spread.
-- Source plan and source gaps from `a-share-data-sources`.
+- Source contract output from `a-share-data-sources`, especially the evidence
+  status for theme exposure, valuation or quality data, why-now catalysts,
+  risks, and failure conditions.
 - Risk flags, event calendar, and analyst constraints when available.
 
 ## Workflow
@@ -48,6 +50,14 @@ Each core idea must include:
 
 ## Guardrails
 
+- Apply the `a-share-data-sources` minimum evidence gate for
+  `a-share-idea-generation`.
+- Do not include a company in the main shortlist unless it has theme exposure,
+  valuation or quality evidence, why-now, risks, and failure conditions.
+- If exposure is supported only by concept tags, news, or third-party research,
+  place the company in `待验证名单`.
+- Do not rank companies by latest price move, turnover, or volume unless the
+  source includes a data time.
 - Do not write buy, sell, add, reduce, target-price, or return language.
 - Do not include a name in the core shortlist when the exposure source is
   missing.
