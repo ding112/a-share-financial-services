@@ -34,3 +34,24 @@ a-share-market-researcher:a-share-market-researcher(
 ## 4) 成功标志
 
 看到类似 `Backgrounded agent` 或 agent 开始返回结果，即表示调用成功。
+
+## 5) 来源契约 smoke test
+
+在本地调用 `a-share-market-researcher` 时，使用一个有明确来源要求的 prompt
+检查来源契约是否生效：
+
+```text
+a-share-market-researcher:a-share-market-researcher(
+  Primer: A股机器人产业链, angle: 减速器供给缺口。
+  要求：先列出本次研究用到的来源类型、来源名称、数据时间、报告期或口径、
+  验证状态和缺失行为；如果只有概念标签或新闻线索，放入待验证名单，不要进入
+  核心 idea shortlist。生成结果保存到 ./out/机器人产业链来源契约测试.md
+)
+```
+
+成功标志：
+
+- 输出包含 `来源类型`、`来源名称`、`数据时间`、`报告期或口径`、
+  `验证状态` 和 `缺失行为`。
+- 核心 idea 不使用单独的概念标签作为入选依据。
+- 缺失行情、估值或业务暴露证据时，输出写 `来源缺失` 或 `待验证`。
