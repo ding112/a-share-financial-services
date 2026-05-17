@@ -56,6 +56,9 @@ In Cowork, open **Settings → Plugins → Add plugin** and either:
 
 ### Claude Code
 
+本地使用 `a-share-screener` 的安装和调用方式见
+[`docs/quick-start.md`](./docs/quick-start.md)。
+
 ```bash
 # Add the marketplace
 claude plugin marketplace add anthropics/claude-for-financial-services

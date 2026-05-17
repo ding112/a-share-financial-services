@@ -20,6 +20,11 @@
       "description": "Equity research tools: earnings analysis, initiating coverage reports, and research workflows"
     },
     {
+      "name": "china-equity-trading",
+      "source": "./plugins/vertical-plugins/china-equity-trading",
+      "description": "A-share short-term research tools: topic screening, daily market briefs, and event calendars"
+    },
+    {
       "name": "private-equity",
       "source": "./plugins/vertical-plugins/private-equity",
       "description": "Private equity deal sourcing and workflow tools: company discovery, CRM integration, and founder outreach"
@@ -48,6 +53,16 @@
       "name": "market-researcher",
       "source": "./plugins/agent-plugins/market-researcher",
       "description": "Sector or theme to industry overview, competitive landscape, peer comps, and ideas shortlist"
+    },
+    {
+      "name": "a-share-market-researcher",
+      "source": "./plugins/agent-plugins/a-share-market-researcher",
+      "description": "A-share sector or theme to industry overview, competitive landscape, peer comps, and ideas shortlist"
+    },
+    {
+      "name": "a-share-screener",
+      "source": "./plugins/agent-plugins/a-share-screener",
+      "description": "A-share topic, event, quant, and risk screening workflow for short-term research"
     },
     {
       "name": "earnings-reviewer",

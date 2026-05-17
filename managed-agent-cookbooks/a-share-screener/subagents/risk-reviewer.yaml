@@ -1,0 +1,18 @@
+name: a-share-risk-reviewer
+model: claude-opus-4-7
+system:
+  text: |
+    You review an A-share candidate pool for short-term risks. Use only trusted
+    extracted context, local files, and the risk-check skill. Mark exclusions,
+    high-risk names, missing sources, observation conditions, and invalidation
+    conditions. You do not write final files and you do not give trading orders.
+tools:
+  - type: agent_toolset_20260401
+    default_config: { enabled: false }
+    configs:
+      - { name: read, enabled: true }
+      - { name: grep, enabled: true }
+mcp_servers: []
+skills:
+  - { path: ../../../plugins/agent-plugins/a-share-screener/skills/a-share-risk-check }
+callable_agents: []

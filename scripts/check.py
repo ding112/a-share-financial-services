@@ -9,12 +9,16 @@ Checks:
   4. Every system.file, skills[].path, callable_agents[].manifest in agent.yaml
      and subagent yamls resolves to an existing file/dir.
   5. Every managed-agents/<slug>/ has agent.yaml, README.md, steering-examples.json.
+  6. Text files do not use <agent-plugin-slug>:<bundled-skill> as an agent type.
 
 Exit 0 if clean, 1 otherwise. Requires: pyyaml.
 """
 import json
+import re
 import sys
 from pathlib import Path
+
+from check_a_share_data_contract import validate_contract  # noqa: E402
 
 try:
     import yaml
@@ -113,12 +117,14 @@ for yml in sorted(MANAGED.rglob("*.yaml")):
 
 # --- 4b. agent-plugin bundled skills match vertical source -----------------
 import filecmp  # noqa: E402
-import re  # noqa: E402
 
 src_by_name = {p.name: p for p in PLUGINS.glob("vertical-plugins/*/skills/*") if p.is_dir()}
+agent_skills: dict[str, set[str]] = {}
 for bundled in sorted(PLUGINS.glob("agent-plugins/*/skills/*")):
     if not bundled.is_dir():
         continue
+    slug = bundled.parents[1].name
+    agent_skills.setdefault(slug, set()).add(bundled.name)
     src = src_by_name.get(bundled.name)
     if not src:
         err(f"bundled-skill: {rel(bundled)}: no vertical-plugins source named '{bundled.name}'")
@@ -142,6 +148,54 @@ for md in sorted(PLUGINS.glob("agent-plugins/*/agents/*.md")):
                 f"plugins/agent-plugins/{slug}/skills/{ref}/ is not bundled"
             )
 
+# --- 4b3. skill names are not used as agent type suffixes ------------------
+TEXT_FILE_SUFFIXES = {".md", ".json", ".yaml", ".yml"}
+IGNORED_TEXT_DIRS = {".git", "__pycache__"}
+AGENT_TYPE_RE = re.compile(r"\b([a-z0-9]+(?:-[a-z0-9]+)+):([a-z0-9]+(?:-[a-z0-9]+)+)\b")
+NEGATED_AGENT_TYPE_MARKERS = (
+    "do not use",
+    "must not use",
+    "should not use",
+    "not use",
+    "不要",
+    "不应",
+    "不能",
+    "不是",
+)
+
+
+def iter_text_files(root: Path):
+    for path in sorted(root.rglob("*")):
+        if not path.is_file() or path.suffix not in TEXT_FILE_SUFFIXES:
+            continue
+        if any(part in IGNORED_TEXT_DIRS for part in path.parts):
+            continue
+        yield path
+
+
+def is_negated_reference(line: str) -> bool:
+    lowered = line.lower()
+    return any(marker in lowered for marker in NEGATED_AGENT_TYPE_MARKERS)
+
+
+for text_file in iter_text_files(ROOT):
+    try:
+        text = text_file.read_text()
+    except UnicodeDecodeError:
+        continue
+    for lineno, line in enumerate(text.splitlines(), start=1):
+        if is_negated_reference(line):
+            continue
+        for match in AGENT_TYPE_RE.finditer(line):
+            slug, suffix = match.groups()
+            if suffix == slug:
+                continue
+            if suffix in agent_skills.get(slug, set()):
+                err(
+                    f"agent-type: {rel(text_file)}:{lineno}: "
+                    f"`{slug}:{suffix}` uses bundled skill `{suffix}` as an agent type"
+                )
+
 # --- 4c. marketplace source paths resolve ----------------------------------
 mp = ROOT / ".claude-plugin" / "marketplace.json"
 for p in json.loads(mp.read_text()).get("plugins", []):
@@ -156,6 +210,10 @@ for d in sorted(MANAGED.iterdir()):
     for req in ("agent.yaml", "README.md", "steering-examples.json"):
         if not (d / req).is_file():
             err(f"missing: {rel(d)}/{req}")
+
+# --- 6. A-share data source contract ---------------------------------------
+for contract_error in validate_contract():
+    err(contract_error)
 
 # --- report ----------------------------------------------------------------
 if errors:

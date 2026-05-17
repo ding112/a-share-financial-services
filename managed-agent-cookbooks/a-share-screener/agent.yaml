@@ -1,0 +1,27 @@
+# A-share Screener — managed-agent cookbook
+
+name: a-share-screener
+model: claude-opus-4-7
+
+system:
+  file: ../../plugins/agent-plugins/a-share-screener/agents/a-share-screener.md
+  append: "You are running headless. Produce files in ./out/; do not assume an open Office document. Always write Chinese outputs."
+
+tools:
+  - type: agent_toolset_20260401
+    default_config: { enabled: false }
+    configs:
+      - { name: read,  enabled: true }
+      - { name: grep,  enabled: true }
+      - { name: glob,  enabled: true }
+
+mcp_servers: []
+
+skills:
+  - { from_plugin: ../../plugins/agent-plugins/a-share-screener }
+
+callable_agents:
+  - { manifest: ./subagents/market-context-reader.yaml }
+  - { manifest: ./subagents/pool-builder.yaml }
+  - { manifest: ./subagents/risk-reviewer.yaml }
+  - { manifest: ./subagents/research-list-writer.yaml }   # only leaf with Write
