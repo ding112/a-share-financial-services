@@ -101,3 +101,33 @@ a-share-market-researcher:a-share-market-researcher(
   和 `comps_summary.md`。
 - 每个数字字段能追溯到来源、时间和口径。
 - 样本数小于 3 的指标不输出统计分布。
+
+## 8) Fixture 端到端 smoke test
+
+仓库包含固定的 A 股研究数据包 fixtures。它们用于无网络验证输入契约和
+comps artifact 交接，不代表实时行情或投资建议。
+
+```text
+a-share-market-researcher:a-share-market-researcher(
+  Primer: A股机器人产业链, angle: 减速器供给缺口。
+  使用 ./fixtures/a-share-research-packs/robotics-reducer/。
+  先列出数据包覆盖、缺失字段、异常值和待验证证据，再生成中文研究 note。
+)
+```
+
+```text
+a-share-market-researcher:a-share-market-researcher(
+  Refresh comps only: A股CPO光模块。
+  使用 ./fixtures/a-share-research-packs/cpo-optical-module/。
+  对缺少 snapshot_time 的行情字段写 来源缺失，不得按最新表现排序。
+)
+```
+
+```text
+a-share-market-researcher:a-share-market-researcher(
+  Primer: A股低空经济, angle: 政策催化与订单兑现。
+  使用 ./fixtures/a-share-research-packs/low-altitude-economy/。
+  因为缺少 market_snapshot.csv 和 financial_summary.csv，估值、流动性和
+  质量字段必须降级为 来源缺失 或 口径不可比。
+)
+```

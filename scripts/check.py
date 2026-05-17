@@ -25,6 +25,7 @@ from check_a_share_idea_generation_contract import (  # noqa: E402
 from check_a_share_comps_artifact_contract import (  # noqa: E402
     validate_contract as validate_comps_artifact_contract,
 )
+from check_a_share_research_pack_fixtures import validate_fixtures  # noqa: E402
 
 try:
     import yaml
@@ -227,6 +228,9 @@ for contract_error in validate_comps_artifact_contract():
 # --- 7. A-share idea generation contract -----------------------------------
 for contract_error in validate_idea_generation_contract():
     err(contract_error)
+
+for fixture_error in validate_fixtures():
+    err(fixture_error)
 
 # --- report ----------------------------------------------------------------
 if errors:

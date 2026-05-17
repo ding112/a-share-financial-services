@@ -1,0 +1,46 @@
+{
+  "theme": "A股机器人产业链-减速器",
+  "as_of": "2026-05-17T09:30:00+08:00",
+  "files": [
+    {
+      "file": "peer_universe.csv",
+      "source_type": "user_file",
+      "source_name": "fixture_peer_universe",
+      "data_time": "2026-05-17T09:30:00+08:00",
+      "period_or_basis": "theme curated universe",
+      "verification_status": "verified"
+    },
+    {
+      "file": "market_snapshot.csv",
+      "source_type": "public_market_data",
+      "source_name": "fixture_market_export",
+      "data_time": "2026-05-17T10:15:00+08:00",
+      "period_or_basis": "snapshot",
+      "verification_status": "verified"
+    },
+    {
+      "file": "financial_summary.csv",
+      "source_type": "public_market_data",
+      "source_name": "fixture_financial_export",
+      "data_time": "2026-05-16",
+      "period_or_basis": "2025FY/TTM mixed annotated",
+      "verification_status": "verified"
+    },
+    {
+      "file": "company_exposure.md",
+      "source_type": "company_public_material",
+      "source_name": "fixture_exposure_notes",
+      "data_time": "2026-05-16",
+      "period_or_basis": "business exposure evidence",
+      "verification_status": "verified"
+    },
+    {
+      "file": "events_and_risks.md",
+      "source_type": "official_disclosure",
+      "source_name": "fixture_risk_notes",
+      "data_time": "2026-05-16",
+      "period_or_basis": "event and risk tracking",
+      "verification_status": "verified"
+    }
+  ]
+}
