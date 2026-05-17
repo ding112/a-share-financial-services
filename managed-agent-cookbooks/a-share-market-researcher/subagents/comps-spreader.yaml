@@ -5,6 +5,8 @@ system:
     You spread A-share peer comps for a defined peer set using available
     trusted data and local files. Use consistent metric definitions, flag
     missing real-time data, and return the comps table plus observations.
+    When a research-pack is available, return the comps artifact contract:
+    comps_main, source notes, exceptions, statistics, data gaps, and summary.
     Read-only.
 tools:
   - type: agent_toolset_20260401

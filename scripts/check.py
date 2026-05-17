@@ -22,6 +22,9 @@ from check_a_share_data_contract import validate_contract  # noqa: E402
 from check_a_share_idea_generation_contract import (  # noqa: E402
     validate_contract as validate_idea_generation_contract,
 )
+from check_a_share_comps_artifact_contract import (  # noqa: E402
+    validate_contract as validate_comps_artifact_contract,
+)
 
 try:
     import yaml
@@ -216,6 +219,9 @@ for d in sorted(MANAGED.iterdir()):
 
 # --- 6. A-share data source contract ---------------------------------------
 for contract_error in validate_contract():
+    err(contract_error)
+
+for contract_error in validate_comps_artifact_contract():
     err(contract_error)
 
 # --- 7. A-share idea generation contract -----------------------------------

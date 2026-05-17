@@ -273,6 +273,114 @@ Run these checks before returning output:
   period or basis.
 - Every blank or unavailable field is explicitly marked.
 
+## Comps artifact contract
+
+When the user provides a `research-pack/`, return a comps artifact set in
+addition to the narrative Markdown. The artifact set is a logical contract:
+in a chat response, present each file as a Markdown table; in headless mode,
+write files under `./out/<中文主题>-comps/` when write access is available.
+
+Required artifact files:
+
+| File | Purpose |
+|---|---|
+| `comps_main.csv` | Main comparable company table |
+| `comps_source_notes.csv` | Field-level source and basis notes |
+| `comps_exceptions.csv` | Outliers, missing values, and comparability exceptions |
+| `comps_statistics.csv` | Median, average, min, max, and quartile statistics |
+| `comps_data_gaps.csv` | Fields that cannot be used because source or basis is missing |
+| `comps_summary.md` | Chinese summary of what can and cannot be concluded |
+
+### `comps_main.csv`
+
+Required columns:
+
+| Column | Meaning |
+|---|---|
+| `code` | Security code from `peer_universe.csv` |
+| `name` | Chinese security short name |
+| `peer_group` | Comparable peer group |
+| `theme_role` | Value-chain or theme role |
+| `market_cap` | Total market capitalization |
+| `float_market_cap` | Free-float market capitalization |
+| `pe_ttm` | PE on TTM basis |
+| `pb` | PB |
+| `ps_ttm` | PS on TTM basis |
+| `revenue` | Revenue for the selected period |
+| `net_profit` | Net profit attributable to parent |
+| `roe` | Return on equity |
+| `liquidity_basis` | Quote timestamp or liquidity basis |
+| `financial_period` | Reporting period |
+| `data_quality_flag` | `可用`, `来源缺失`, `待验证`, `口径不可比`, or `不适用` |
+
+### `comps_source_notes.csv`
+
+Required columns:
+
+| Column | Meaning |
+|---|---|
+| `code` | Security code |
+| `field_name` | Field or metric name |
+| `source_type` | Source class from `a-share-data-sources` |
+| `source_name` | Source name, export name, filing name, or user file |
+| `data_time` | Quote timestamp, access time, announcement date, or report date |
+| `period_or_basis` | TTM, reporting period, snapshot, formula, or user basis |
+| `verification_status` | `verified`, `user_provided`, `待验证`, or `来源缺失` |
+| `missing_behavior` | Downstream degradation rule |
+
+### `comps_exceptions.csv`
+
+Required columns:
+
+| Column | Meaning |
+|---|---|
+| `code` | Security code |
+| `name` | Chinese security short name |
+| `exception_type` | `negative_denominator`, `missing_source`, `st_or_suspended`, `new_listing`, `extreme_multiple`, `stale_timestamp`, or `basis_mismatch` |
+| `metric` | Affected metric |
+| `observed_value` | Value as provided, or `来源缺失` |
+| `action` | `exclude_from_statistics`, `keep_with_flag`, or `move_to_watchlist` |
+| `reason` | Chinese explanation of the exception |
+
+### `comps_statistics.csv`
+
+Required columns:
+
+| Column | Meaning |
+|---|---|
+| `metric` | Numeric comparable metric |
+| `sample_size` | Count of sourced numeric values |
+| `median` | Median value |
+| `average` | Average value |
+| `minimum` | Minimum value |
+| `maximum` | Maximum value |
+| `quartile_1` | First quartile |
+| `quartile_3` | Third quartile |
+| `included_codes` | Comma-separated codes included in the calculation |
+| `excluded_codes` | Comma-separated codes excluded with exception reasons |
+
+### `comps_data_gaps.csv`
+
+Required columns:
+
+| Column | Meaning |
+|---|---|
+| `code` | Security code, or `ALL` for a missing field across the package |
+| `field_name` | Missing or unusable field |
+| `required_for` | `ranking`, `statistics`, `idea_generation`, or `source_note` |
+| `gap_reason` | Missing file, missing column, missing timestamp, stale data, or basis mismatch |
+| `missing_behavior` | Required downstream degradation |
+
+### `comps_summary.md`
+
+The summary must include these Chinese sections:
+
+- `可用数据`
+- `不可用于排序的数据`
+- `异常值和不可比项`
+- `统计分布`
+- `对 idea generation 的交接`
+
 ## Output format
 
 Return Chinese Markdown with these sections, in this order:

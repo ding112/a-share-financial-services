@@ -79,3 +79,25 @@ a-share-market-researcher:a-share-market-researcher(
 - 输出先说明 `source_manifest.json` 和 `peer_universe.csv` 是否存在。
 - 缺少可选文件时，对应字段写 `来源缺失`、`待验证` 或 `口径不可比`。
 - 没有 `snapshot_time` 的行情或估值字段不用于排序。
+
+## 7) Comps artifact smoke test
+
+准备好 `research-pack/` 后，可以只刷新 comps artifact：
+
+```text
+a-share-market-researcher:a-share-market-researcher(
+  Refresh comps only: A股机器人产业链。
+  使用 ./research-pack/机器人产业链/，输出 comps_main.csv、
+  comps_source_notes.csv、comps_exceptions.csv、comps_statistics.csv、
+  comps_data_gaps.csv 和 comps_summary.md 的 Markdown 预览。不要补数；
+  缺少行情时间戳、报告期或来源时，写 来源缺失、待验证 或 口径不可比。
+)
+```
+
+成功标志：
+
+- 输出包含 `comps_main.csv`、`comps_source_notes.csv`、
+  `comps_exceptions.csv`、`comps_statistics.csv`、`comps_data_gaps.csv`
+  和 `comps_summary.md`。
+- 每个数字字段能追溯到来源、时间和口径。
+- 样本数小于 3 的指标不输出统计分布。
