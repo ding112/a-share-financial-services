@@ -50,6 +50,30 @@ flow, margin financing, northbound holdings, or historical 5-day and 20-day
 returns. Keep those fields as `missing_source` unless another reliable source is
 provided.
 
+## Research-pack input contract
+
+Use `research-pack/` when an upstream workflow or analyst provides local files
+for a sector primer. The package is read-only input for the agent. It does not
+make the managed-agent template run Tencent, AkShare, Eastmoney, or any other
+network collection by default.
+
+The recommended package contains these files:
+
+| File | Required | Use |
+|---|---|---|
+| `source_manifest.json` | Yes | Declares each input file's source type, source name, data time, basis, verification status, and missing-data behavior. |
+| `peer_universe.csv` | Yes | Defines the 8 to 15 candidate A-share companies, exchange, board, peer group, theme role, and exposure source reference. |
+| `market_snapshot.csv` | No | Provides timestamped price, valuation, market-cap, and liquidity fields. |
+| `financial_summary.csv` | No | Provides period-tagged revenue, profit, margin, ROE, leverage, and cash-flow fields. |
+| `company_exposure.md` | No | Stores business exposure, order, capacity, customer, product, and technology-route evidence grouped by company code. |
+| `events_and_risks.md` | No | Stores catalysts, regulatory events, reductions, unlocks, ST, suspension, and failure-condition evidence grouped by company code. |
+
+If `source_manifest.json` is missing, treat the package as `user_provided`
+leads only. If `peer_universe.csv` is missing, stop before comps and idea
+shortlist work and ask for a stock pool. Optional files can be absent, but the
+corresponding market, financial, exposure, event, or risk fields must remain
+`missing_source`, `来源缺失`, `待验证`, or `口径不可比`.
+
 Use these source classes in outputs and internal handoffs:
 
 | Source class | Use for |

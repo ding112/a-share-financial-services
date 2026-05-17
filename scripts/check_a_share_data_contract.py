@@ -13,6 +13,7 @@ BUNDLED = ROOT / "plugins/agent-plugins/a-share-market-researcher/skills/a-share
 REQUIRED_SECTIONS = [
     "## 研究事实类型",
     "## 来源等级契约",
+    "## 研究数据包契约",
     "## 字段来源契约",
     "## 引用元数据 schema",
     "## 降级规则",
@@ -49,6 +50,34 @@ REQUIRED_EVIDENCE_GATES = [
     "idea 入选必须同时具备主题暴露、估值或质量证据、why-now、风险和失效条件",
 ]
 
+REQUIRED_RESEARCH_PACK_FILES = [
+    "source_manifest.json",
+    "peer_universe.csv",
+    "market_snapshot.csv",
+    "financial_summary.csv",
+    "company_exposure.md",
+    "events_and_risks.md",
+]
+
+REQUIRED_RESEARCH_PACK_FIELDS = [
+    "source_type",
+    "source_name",
+    "data_time",
+    "period_or_basis",
+    "verification_status",
+    "missing_behavior",
+    "code",
+    "name",
+    "exchange",
+    "peer_group",
+    "theme_role",
+    "exposure_source_ref",
+    "snapshot_time",
+    "revenue",
+    "net_profit",
+    "roe",
+]
+
 
 def _read(path: Path) -> str:
     if not path.is_file():
@@ -75,6 +104,14 @@ def validate_contract() -> list[str]:
     for phrase in REQUIRED_EVIDENCE_GATES:
         if phrase not in text:
             errors.append(f"{SOURCE.relative_to(ROOT)} missing evidence gate `{phrase}`")
+
+    for filename in REQUIRED_RESEARCH_PACK_FILES:
+        if filename not in text:
+            errors.append(f"{SOURCE.relative_to(ROOT)} missing research-pack file `{filename}`")
+
+    for field in REQUIRED_RESEARCH_PACK_FIELDS:
+        if field not in text:
+            errors.append(f"{SOURCE.relative_to(ROOT)} missing research-pack field `{field}`")
 
     if SOURCE.is_file() and BUNDLED.is_file() and _read(SOURCE) != _read(BUNDLED):
         errors.append(

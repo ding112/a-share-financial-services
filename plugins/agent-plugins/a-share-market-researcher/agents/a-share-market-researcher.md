@@ -19,7 +19,7 @@ tools: Read, Write, Edit
 ## Workflow
 
 1. **Scope the ask.** 确认行业或主题、研究角度、A 股范围边界和 8 到 15 只核心 peer。
-2. **Resolve the sources.** 内部使用 skill `a-share-data-sources`，列出本次研究所需字段、免费/公开来源、数据时间戳要求和来源缺口。
+2. **Resolve the sources.** 内部使用 skill `a-share-data-sources`，先识别用户是否提供 `research-pack/` 数据包，再列出本次研究所需字段、免费/公开来源、数据时间戳要求和来源缺口。
 3. **Write the overview.** 调用 `a-share-sector-overview` 起草规模、增长、结构、驱动和 why-now 叙事。
 4. **Map the landscape.** 调用 `a-share-competitive-analysis` 梳理核心玩家、定位、竞争基础和近期变化。
 5. **Spread the peers.** 调用 `a-share-comps-analysis`，用一致口径整理 peer set 的估值、流动性和质量指标。

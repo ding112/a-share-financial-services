@@ -55,3 +55,27 @@ a-share-market-researcher:a-share-market-researcher(
   `验证状态` 和 `缺失行为`。
 - 核心 idea 不使用单独的概念标签作为入选依据。
 - 缺失行情、估值或业务暴露证据时，输出写 `来源缺失` 或 `待验证`。
+
+## 6) 数据包契约 smoke test
+
+如果你已经准备了本地研究数据包，可以让 `a-share-market-researcher` 先解析
+数据包，再开始写行业研究。推荐目录名是 `research-pack/`，必需文件是
+`source_manifest.json` 和 `peer_universe.csv`。
+
+```text
+a-share-market-researcher:a-share-market-researcher(
+  Primer: A股机器人产业链, angle: 减速器供给缺口。
+  使用 ./research-pack/机器人产业链/ 作为输入数据包。
+  先解析 source_manifest.json 和 peer_universe.csv；如果存在
+  market_snapshot.csv、financial_summary.csv、company_exposure.md 或
+  events_and_risks.md，也一并读取。请先列出数据包字段来源、数据时间、
+  报告期或口径、验证状态和缺失行为，再生成结果到
+  ./out/机器人产业链行业研究.md
+)
+```
+
+成功标志：
+
+- 输出先说明 `source_manifest.json` 和 `peer_universe.csv` 是否存在。
+- 缺少可选文件时，对应字段写 `来源缺失`、`待验证` 或 `口径不可比`。
+- 没有 `snapshot_time` 的行情或估值字段不用于排序。
