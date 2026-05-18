@@ -167,6 +167,19 @@ python3 scripts/generate_a_share_comps_artifacts.py \
   --theme 机器人产业链
 ```
 
+```bash
+python3 scripts/generate_a_share_comps_workbook.py \
+  --comps-dir out/robotics-reducer-comps \
+  --output out/机器人产业链可比公司.xlsx \
+  --theme 机器人产业链
+```
+
+成功输出：
+
+```text
+wrote comps workbook: out/机器人产业链可比公司.xlsx
+```
+
 命令会写出以下文件：
 
 - `comps_main.csv`

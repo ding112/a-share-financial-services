@@ -381,6 +381,38 @@ The summary must include these Chinese sections:
 - `统计分布`
 - `对 idea generation 的交接`
 
+## Workbook artifact contract
+
+When the analyst asks for an Excel-ready comps spread, generate an optional
+workbook from the CSV artifact set. The workbook is a presentation and review
+artifact; the source of truth remains the CSV files and `comps_summary.md`.
+
+Required workbook file:
+
+| File | Use |
+|---|---|
+| `a_share_comps_workbook.xlsx` | Excel-readable workbook containing the comps spread, source notes, exceptions, statistics, data gaps, and summary. |
+
+Required sheets:
+
+| Sheet | Source artifact |
+|---|---|
+| `Comps Main` | `comps_main.csv` |
+| `Source Notes` | `comps_source_notes.csv` |
+| `Exceptions` | `comps_exceptions.csv` |
+| `Statistics` | `comps_statistics.csv` |
+| `Data Gaps` | `comps_data_gaps.csv` |
+| `Summary` | `comps_summary.md` |
+
+Rules:
+
+- Do not add estimated values to the workbook.
+- Preserve `来源缺失`, `待验证`, `口径不可比`, and `不适用` exactly as written.
+- Keep formulas out of the first workbook version; calculations must already
+  exist in the CSV artifacts.
+- Include every source-note and data-gap row so the analyst can audit the
+  spread without reopening the raw research-pack.
+
 ## Output format
 
 Return Chinese Markdown with these sections, in this order:

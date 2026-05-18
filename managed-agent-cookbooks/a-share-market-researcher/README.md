@@ -102,6 +102,10 @@ The Markdown note is the default deliverable. A binary PPTX is produced only
 when the user explicitly asks for slides; use the bundled `pptx-author` skill
 for that file-producing step.
 
+The optional comps workbook is generated from the phase 5 CSV artifacts. It is
+for analyst review and formatting convenience only; the CSV files remain the
+auditable source of truth.
+
 ## Security & handoffs
 
 Third-party reports, issuer materials, announcements, news excerpts, and
