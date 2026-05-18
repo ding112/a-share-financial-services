@@ -154,3 +154,58 @@ a-share-market-researcher:a-share-market-researcher(
   先列出 source_manifest.json 中的来源、数据时间、报告期或口径和缺失行为。
 )
 ```
+
+## 10) 生成 A 股 comps artifact
+
+准备好本地 `research-pack/` 后，可以用阶段 5 生成器直接产出 comps artifact
+文件集。这个脚本只读取本地文件，不访问网络，也不会为缺失字段补数。
+
+```bash
+python3 scripts/generate_a_share_comps_artifacts.py \
+  --research-pack fixtures/a-share-research-packs/robotics-reducer \
+  --output-dir out/robotics-reducer-comps \
+  --theme 机器人产业链
+```
+
+命令会写出以下文件：
+
+- `comps_main.csv`
+- `comps_source_notes.csv`
+- `comps_exceptions.csv`
+- `comps_statistics.csv`
+- `comps_data_gaps.csv`
+- `comps_summary.md`
+
+成功标志：
+
+- `comps_main.csv` 保留公司、主题角色、市值、估值和财务字段。
+- 缺失值保留为 `来源缺失`，不使用估算值填充。
+- 亏损公司会从 PE 统计中排除，而不是强行进入估值分位数。
+- `comps_summary.md` 包含可用数据、不可排序字段、异常项、统计分布和
+  idea generation 交接说明。
+
+## 11) 生成 A 股 research handoff
+
+阶段 6 handoff 把 `research-pack/`、阶段 5 comps artifact、暴露证据和
+事件风险汇成 competitive-analysis 与 idea-generation 可以直接消费的结构化
+输入。
+
+```bash
+python3 scripts/generate_a_share_research_handoff.py \
+  --research-pack fixtures/a-share-research-packs/robotics-reducer \
+  --comps-dir out/robotics-reducer-comps \
+  --output-dir out/robotics-reducer-handoff \
+  --theme 机器人产业链
+```
+
+命令会写出以下文件：
+
+- `competitive_handoff.csv`
+- `idea_inputs.csv`
+- `idea_risk_register.csv`
+- `research_handoff_summary.md`
+
+`competitive_handoff.csv` 用于竞争格局横向比较和 comps handoff。
+`idea_inputs.csv` 与 `idea_risk_register.csv` 用于 idea generation 的
+入选、降级和风险排除。`data_quality_flag` 非 `可用` 的公司不得直接用于
+估值或质量排序。

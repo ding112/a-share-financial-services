@@ -177,6 +177,46 @@ The `横向比较表` must include these columns:
 | 代码 | 简称 | 研究优先级 | 主题暴露 | why-now | 估值或质量依据 | 流动性 | 催化 | 主要风险 | 数据缺口 |
 |---|---|---|---|---|---|---|---|---|---|
 
+## Idea input artifact contract
+
+When a phase 6 research handoff directory is available, consume
+`idea_inputs.csv` and `idea_risk_register.csv` before selecting the shortlist.
+These files connect competitive positioning, comps data quality, why-now
+questions, risk flags, failure conditions, and next diligence questions.
+
+Required `idea_inputs.csv` columns:
+
+| Column | Meaning |
+|---|---|
+| `code` | Security code |
+| `name` | Chinese security short name |
+| `research_priority` | `高优先级`, `中优先级`, `观察候选`, or `风险排除` |
+| `theme_role` | Value-chain or theme role |
+| `theme_exposure` | Exposure fact or data-gap note |
+| `valuation_or_quality_basis` | Comps valuation, quality, and data-gap basis |
+| `liquidity_basis` | Market cap, float market cap, turnover, or timestamp basis |
+| `why_now` | Verifiable catalyst question or event path |
+| `catalyst` | Policy, order, capacity, earnings, product, or event catalyst |
+| `major_risks` | Main business, financial, regulatory, liquidity, or data risks |
+| `failure_conditions` | Facts that would invalidate the research logic |
+| `next_research_questions` | Two to three concrete diligence questions |
+
+Required `idea_risk_register.csv` columns:
+
+| Column | Meaning |
+|---|---|
+| `code` | Security code |
+| `name` | Chinese security short name |
+| `risk_type` | `data_gap`, `event_or_exception`, or another explicit risk class |
+| `risk_detail` | Specific risk or missing basis |
+| `source_ref` | Source artifact or file reference |
+| `idea_generation_action` | `保留`, `降级为观察候选`, or `风险排除复核` |
+
+Do not include a name in `核心想法清单` when `research_priority` is
+`风险排除`. Names marked `观察候选` can appear only in `待验证观察名单`.
+Every idea card must cite `valuation_or_quality_basis`, `major_risks`,
+`failure_conditions`, and `next_research_questions` from the handoff artifact.
+
 ## Guardrails
 
 - Apply the `a-share-data-sources` minimum evidence gate for

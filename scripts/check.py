@@ -25,6 +25,8 @@ from check_a_share_idea_generation_contract import (  # noqa: E402
 from check_a_share_comps_artifact_contract import (  # noqa: E402
     validate_contract as validate_comps_artifact_contract,
 )
+from check_a_share_comps_generator import validate_comps_generator  # noqa: E402
+from check_a_share_research_handoff import validate_research_handoff  # noqa: E402
 from check_a_share_research_pack_fixtures import validate_fixtures  # noqa: E402
 from check_a_share_research_pack_prep import validate_prep_script  # noqa: E402
 
@@ -235,6 +237,12 @@ for fixture_error in validate_fixtures():
 
 for prep_error in validate_prep_script():
     err(prep_error)
+
+for generator_error in validate_comps_generator():
+    err(generator_error)
+
+for handoff_error in validate_research_handoff():
+    err(handoff_error)
 
 # --- report ----------------------------------------------------------------
 if errors:

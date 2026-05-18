@@ -273,6 +273,41 @@ The `核心 peer set 与 comps handoff` section must include this table:
 |---|---|---|---|---|---|---|
 ```
 
+## Competitive handoff artifact contract
+
+When a phase 6 research handoff directory is available, consume
+`competitive_handoff.csv` before writing the competitive landscape. The file
+connects the peer universe, exposure evidence, comps metrics, financial
+growth, and risk flags.
+
+Required `competitive_handoff.csv` columns:
+
+| Column | Meaning |
+|---|---|
+| `code` | Security code from `peer_universe.csv` |
+| `name` | Chinese security short name |
+| `peer_group` | Peer group used for landscape grouping |
+| `theme_role` | Value-chain or theme role |
+| `exposure_summary` | Business-exposure fact or marked data gap |
+| `exposure_source_ref` | Source reference from `company_exposure.md` |
+| `market_cap` | Total market capitalization from comps |
+| `pe_ttm` | PE on TTM basis from comps |
+| `pb` | PB from comps |
+| `ps_ttm` | PS on TTM basis from comps |
+| `revenue` | Revenue from comps |
+| `revenue_growth` | Revenue growth from `financial_summary.csv` |
+| `net_profit` | Net profit from comps |
+| `roe` | ROE from comps |
+| `data_quality_flag` | `可用`, `来源缺失`, `待验证`, `口径不可比`, or `不适用` |
+| `risk_flags` | Events, exceptions, or data-quality risks |
+| `comps_handoff_note` | How competitive-analysis must use or downgrade the row |
+
+Use this artifact as the first source for `玩家分组`, `横向比较`, and
+`核心 peer set 与 comps handoff`. Do not promote a company to the core peer set
+when `exposure_summary` is `来源缺失` or `data_quality_flag` blocks comparable
+analysis. Preserve the row as `观察` or `待验证` when exposure is plausible but
+the source or comps basis is incomplete.
+
 ## 质量检查
 
 Before returning the output, verify these checks:
