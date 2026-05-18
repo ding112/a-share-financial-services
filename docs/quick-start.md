@@ -209,3 +209,33 @@ python3 scripts/generate_a_share_research_handoff.py \
 `idea_inputs.csv` 与 `idea_risk_register.csv` 用于 idea generation 的
 入选、降级和风险排除。`data_quality_flag` 非 `可用` 的公司不得直接用于
 估值或质量排序。
+
+## 12) 生成阶段 7 研究 note assembly
+
+阶段 5 comps artifact 和阶段 6 research handoff 都生成后，可以运行阶段 7
+组装器生成中文研究 note、slide outline 和 manifest。
+
+```bash
+python3 scripts/generate_a_share_research_note.py \
+  --research-pack fixtures/a-share-research-packs/robotics-reducer \
+  --comps-dir out/robotics-reducer-comps \
+  --handoff-dir out/robotics-reducer-handoff \
+  --output-dir out/robotics-reducer-note \
+  --theme 机器人产业链 \
+  --angle 关注减速器国产替代和机器人量产弹性 \
+  --as-of 2026-05-18
+```
+
+成功输出：
+
+```text
+wrote research note assembly: out/robotics-reducer-note
+```
+
+命令会写出以下文件：
+
+```text
+out/robotics-reducer-note/机器人产业链行业研究.md
+out/robotics-reducer-note/机器人产业链路演大纲.md
+out/robotics-reducer-note/research_assembly_manifest.json
+```

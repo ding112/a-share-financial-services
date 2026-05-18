@@ -24,7 +24,11 @@ tools: Read, Write, Edit
 4. **Map the landscape.** 调用 `a-share-competitive-analysis` 梳理核心玩家、定位、竞争基础和近期变化。
 5. **Spread the peers.** 调用 `a-share-comps-analysis`，用一致口径整理 peer set 的估值、流动性和质量指标。
 6. **Surface ideas.** 调用 `a-share-idea-generation`，基于概览、格局和 comps 选出三到五只最能表达主题的标的。
-7. **Assemble and save the note.** 交给 note-writer 生成中文研究笔记，并保存为 `./out/<中文主题>行业研究.md`；只有明确要求 slides 时才调用 `pptx-author`。
+7. **Assemble and save the note.** 当本地已有 `research-pack/`、comps artifact
+   和 research handoff 时，优先使用阶段 7 note assembly 产物生成中文研究笔记
+   和 slide outline；交给 note-writer 保存为 `./out/<中文主题>行业研究.md` 和
+   `./out/<中文主题>路演大纲.md`。只有用户明确要求 slides 时，才继续调用
+   `pptx-author` 生成 PPTX。
 
 ## Guardrails
 
@@ -38,6 +42,8 @@ tools: Read, Write, Edit
 - 明确区分事实、研究推断和市场情绪。
 - 不直接给出买入、卖出、加仓、减仓、目标价或收益承诺。
 - 在 comps 表完成后停下来提示分析师复核；研究笔记生成后再次提示复核。
+- 如果使用阶段 7 本地组装产物，必须同时保留 `research_assembly_manifest.json`，
+  让分析师能回溯输入目录、comps artifact 和 handoff artifact。
 - 生成研究笔记后必须写入本地 Markdown 文件；如果用户没有指定路径，默认保存到 `./out/`，文件名必须使用中文主题名，不使用英文占位名。
 - 本 Agent 只负责起草研究材料，不负责发布、分发或下单。
 

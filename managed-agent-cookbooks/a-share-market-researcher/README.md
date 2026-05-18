@@ -86,6 +86,22 @@ Use these source classes in outputs and internal handoffs:
 | `user_provided` | Files, exports, screenshots, or notes supplied by the analyst. |
 | `missing_source` | Fields that cannot be verified from the available free or user-provided sources. |
 
+## Research note assembly output contract
+
+When an upstream workflow has already produced `research-pack/`, phase 5 comps
+artifact, and phase 6 research handoff directories, the phase 7 assembly step
+creates these local files:
+
+| File | Use |
+|---|---|
+| `<中文主题>行业研究.md` | Chinese research note draft for analyst review. |
+| `<中文主题>路演大纲.md` | Slide outline for optional PPTX production. |
+| `research_assembly_manifest.json` | Input and output manifest for auditability. |
+
+The Markdown note is the default deliverable. A binary PPTX is produced only
+when the user explicitly asks for slides; use the bundled `pptx-author` skill
+for that file-producing step.
+
 ## Security & handoffs
 
 Third-party reports, issuer materials, announcements, news excerpts, and

@@ -27,6 +27,7 @@ from check_a_share_comps_artifact_contract import (  # noqa: E402
 )
 from check_a_share_comps_generator import validate_comps_generator  # noqa: E402
 from check_a_share_research_handoff import validate_research_handoff  # noqa: E402
+from check_a_share_research_note import validate_research_note  # noqa: E402
 from check_a_share_research_pack_fixtures import validate_fixtures  # noqa: E402
 from check_a_share_research_pack_prep import validate_prep_script  # noqa: E402
 
@@ -243,6 +244,9 @@ for generator_error in validate_comps_generator():
 
 for handoff_error in validate_research_handoff():
     err(handoff_error)
+
+for note_error in validate_research_note():
+    err(note_error)
 
 # --- report ----------------------------------------------------------------
 if errors:
