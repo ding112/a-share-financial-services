@@ -106,6 +106,102 @@ The optional comps workbook is generated from the phase 5 CSV artifacts. It is
 for analyst review and formatting convenience only; the CSV files remain the
 auditable source of truth.
 
+## 端到端 fixture
+
+使用 `robotics-reducer` fixture 复现本地只读 workflow。所有命令都只读取
+本地文件，并把输出写到已忽略的 `out/` 目录；命令不会抓取腾讯、AkShare、
+东方财富或其他网络来源。
+
+先把本地 raw exports 整理成标准 `research-pack/`：
+
+```bash
+python3 scripts/prepare_a_share_research_pack.py \
+  --input-dir fixtures/a-share-raw-exports/robotics-reducer \
+  --output-dir out/robotics-reducer-research-pack \
+  --theme 机器人产业链 \
+  --as-of 2026-05-17
+```
+
+命令写出：
+
+```text
+out/robotics-reducer-research-pack/source_manifest.json
+out/robotics-reducer-research-pack/peer_universe.csv
+out/robotics-reducer-research-pack/market_snapshot.csv
+out/robotics-reducer-research-pack/financial_summary.csv
+out/robotics-reducer-research-pack/company_exposure.md
+out/robotics-reducer-research-pack/events_and_risks.md
+```
+
+然后生成阶段 5 comps artifacts：
+
+```bash
+python3 scripts/generate_a_share_comps_artifacts.py \
+  --research-pack out/robotics-reducer-research-pack \
+  --output-dir out/robotics-reducer-comps \
+  --theme 机器人产业链
+```
+
+命令写出：
+
+```text
+out/robotics-reducer-comps/comps_main.csv
+out/robotics-reducer-comps/comps_source_notes.csv
+out/robotics-reducer-comps/comps_exceptions.csv
+out/robotics-reducer-comps/comps_statistics.csv
+out/robotics-reducer-comps/comps_data_gaps.csv
+out/robotics-reducer-comps/comps_summary.md
+```
+
+可选：从阶段 5 CSV artifacts 生成分析师复核用 workbook：
+
+```bash
+python3 scripts/generate_a_share_comps_workbook.py \
+  --comps-dir out/robotics-reducer-comps \
+  --output out/机器人产业链可比公司.xlsx \
+  --theme 机器人产业链
+```
+
+然后生成阶段 6 research handoff：
+
+```bash
+python3 scripts/generate_a_share_research_handoff.py \
+  --research-pack out/robotics-reducer-research-pack \
+  --comps-dir out/robotics-reducer-comps \
+  --output-dir out/robotics-reducer-handoff \
+  --theme 机器人产业链
+```
+
+命令写出：
+
+```text
+out/robotics-reducer-handoff/competitive_handoff.csv
+out/robotics-reducer-handoff/idea_inputs.csv
+out/robotics-reducer-handoff/idea_risk_register.csv
+out/robotics-reducer-handoff/research_handoff_summary.md
+```
+
+最后组装阶段 7 中文研究 note 和路演大纲：
+
+```bash
+python3 scripts/generate_a_share_research_note.py \
+  --research-pack out/robotics-reducer-research-pack \
+  --comps-dir out/robotics-reducer-comps \
+  --handoff-dir out/robotics-reducer-handoff \
+  --output-dir out/robotics-reducer-note \
+  --theme 机器人产业链 \
+  --angle 关注减速器国产替代和机器人量产弹性 \
+  --as-of 2026-05-18
+```
+
+命令写出：
+
+```text
+out/robotics-reducer-note/机器人产业链行业研究.md
+out/robotics-reducer-note/机器人产业链路演大纲.md
+out/robotics-reducer-note/research_assembly_manifest.json
+```
+
 ## Security & handoffs
 
 Third-party reports, issuer materials, announcements, news excerpts, and
