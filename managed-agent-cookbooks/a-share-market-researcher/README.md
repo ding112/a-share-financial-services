@@ -35,6 +35,11 @@ or Eastmoney network calls by default. When an upstream workflow provides a data
 package generated from those sources, classify it as `public_market_data` and
 preserve the original source name, access time, report period, and unit.
 
+上游公开数据抓取器是 `scripts/fetch_a_share_public_data.py`。它可以从本地
+`peer_universe.csv` 生成 `market_snapshot.csv`、`financial_summary.csv`、
+`source_manifest.json` 和 `fetch_errors.csv`。managed-agent 模板仍然只读取
+本地文件；它默认不运行抓取器，也不执行联网采集。
+
 Guide-backed free sources can fill these gaps:
 
 | Source | Filled data gap | Source class |

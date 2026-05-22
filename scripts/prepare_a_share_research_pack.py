@@ -11,6 +11,8 @@ from pathlib import Path
 
 REQUIRED_INPUTS = ["peer_universe.csv"]
 OPTIONAL_INPUTS = [
+    "market_snapshot.csv",
+    "financial_summary.csv",
     "tencent_quotes.csv",
     "akshare_financial_summary.csv",
     "company_exposure.md",
@@ -81,6 +83,8 @@ def copy_required_inputs(input_dir: Path, output_dir: Path) -> None:
 def copy_optional_inputs(input_dir: Path, output_dir: Path) -> list[str]:
     copied: list[str] = []
     mapping = {
+        "market_snapshot.csv": "market_snapshot.csv",
+        "financial_summary.csv": "financial_summary.csv",
         "tencent_quotes.csv": "market_snapshot.csv",
         "akshare_financial_summary.csv": "financial_summary.csv",
         "company_exposure.md": "company_exposure.md",
@@ -89,7 +93,10 @@ def copy_optional_inputs(input_dir: Path, output_dir: Path) -> list[str]:
     for source_name, target_name in mapping.items():
         src = input_dir / source_name
         if src.is_file():
-            shutil.copyfile(src, output_dir / target_name)
+            target = output_dir / target_name
+            if target.is_file():
+                continue
+            shutil.copyfile(src, target)
             copied.append(target_name)
     return copied
 

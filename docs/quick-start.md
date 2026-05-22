@@ -132,7 +132,38 @@ a-share-market-researcher:a-share-market-researcher(
 )
 ```
 
-## 9) 本地公开数据预处理
+## 9) 抓取公开行情和财务摘要
+
+如果你已经有 `peer_universe.csv`，可以先抓取公开行情和财务摘要。这个命令会
+联网访问公开数据源，并把结果写成 research-pack 可消费的本地文件。第一版只
+覆盖行情快照和财务摘要，不抓公告、行业规模、业务暴露或三大报表明细。
+
+```bash
+python3 scripts/fetch_a_share_public_data.py \
+  --peer-universe fixtures/a-share-research-packs/robotics-reducer/peer_universe.csv \
+  --output-dir out/robotics-reducer-public-data \
+  --as-of "2026-05-21 15:00:00"
+```
+
+命令会写出以下文件：
+
+- `market_snapshot.csv`
+- `financial_summary.csv`
+- `source_manifest.json`
+- `fetch_errors.csv`
+
+离线验证可以使用 fixture source：
+
+```bash
+python3 scripts/fetch_a_share_public_data.py \
+  --peer-universe fixtures/a-share-research-packs/robotics-reducer/peer_universe.csv \
+  --output-dir out/robotics-reducer-public-data \
+  --as-of "2026-05-21 15:00:00" \
+  --market-source fixture \
+  --financial-source fixture
+```
+
+## 10) 本地公开数据预处理
 
 如果你已经在本地导出腾讯行情、AkShare 财务摘要或其他 CSV，可以先把这些
 文件整理成标准 `research-pack/`。这个脚本只读取本地文件，不访问网络。
@@ -155,7 +186,7 @@ a-share-market-researcher:a-share-market-researcher(
 )
 ```
 
-## 10) 生成 A 股 comps artifact
+## 11) 生成 A 股 comps artifact
 
 准备好本地 `research-pack/` 后，可以用阶段 5 生成器直接产出 comps artifact
 文件集。这个脚本只读取本地文件，不访问网络，也不会为缺失字段补数。
@@ -197,7 +228,7 @@ wrote comps workbook: out/机器人产业链可比公司.xlsx
 - `comps_summary.md` 包含可用数据、不可排序字段、异常项、统计分布和
   idea generation 交接说明。
 
-## 11) 生成 A 股 research handoff
+## 12) 生成 A 股 research handoff
 
 阶段 6 handoff 把 `research-pack/`、阶段 5 comps artifact、暴露证据和
 事件风险汇成 competitive-analysis 与 idea-generation 可以直接消费的结构化
@@ -223,7 +254,7 @@ python3 scripts/generate_a_share_research_handoff.py \
 入选、降级和风险排除。`data_quality_flag` 非 `可用` 的公司不得直接用于
 估值或质量排序。
 
-## 12) 生成阶段 7 研究 note assembly
+## 13) 生成阶段 7 研究 note assembly
 
 阶段 5 comps artifact 和阶段 6 research handoff 都生成后，可以运行阶段 7
 组装器生成中文研究 note、slide outline 和 manifest。
