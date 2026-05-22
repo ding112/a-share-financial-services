@@ -47,3 +47,4 @@ MEMORY.md
 .claude/worktrees/
 .playwright-mcp/
 docs/superpowers/plans
+.claude/settings.local.json
