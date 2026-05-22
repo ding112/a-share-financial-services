@@ -19,6 +19,16 @@
       "verification_status": "verified"
     },
     {
+      "file": "market_snapshot.csv",
+      "field_group": "price_performance",
+      "source_type": "public_market_data",
+      "source_name": "fixture_akshare_qfq_history",
+      "data_time": "2026-05-17T10:15:00+08:00",
+      "period_or_basis": "前复权收盘价 5/20 个交易日收益率",
+      "verification_status": "verified",
+      "missing_behavior": "缺失时短期收益率字段写来源缺失，不得写成未来收益判断"
+    },
+    {
       "file": "financial_summary.csv",
       "source_type": "public_market_data",
       "source_name": "fixture_financial_export",

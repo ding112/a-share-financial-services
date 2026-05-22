@@ -42,26 +42,34 @@ period, and unit.
 
 公开数据抓取器是 `scripts/fetch_a_share_public_data.py`。它可以从本地
 `peer_universe.csv` 生成 `market_snapshot.csv`、`financial_summary.csv`、
-`source_manifest.json` 和 `fetch_errors.csv`。一键入口是
+`source_manifest.json` 和 `fetch_errors.csv`。`market_snapshot.csv` 包含
+AkShare 前复权收盘价计算的 `return_5d`、`return_20d` 和 `return_basis`；
+这些字段只用于短期历史表现展示，不参与估值或质量统计。对应 manifest
+条目使用 `file: "market_snapshot.csv"` 和 `field_group: "price_performance"`。
+一键入口是
 `scripts/auto_prepare_a_share_research_pack.py`；当没有种子文件时，它使用
 AkShare 公开概念或行业板块生成 `candidate_peer_universe.csv` 和
 `peer_universe.csv`，再调用公开数据抓取器补行情和财务摘要。自动生成的概念
 或板块成分只能作为 `待验证` 线索，不能作为已验证业务暴露。
+
+默认财务源仍是 Eastmoney。显式使用 `--financial-source akshare` 时，
+AkShare 依赖缺失、接口失败或字段无法解析会让准备命令返回非 0；调用方
+必须检查退出码和 `fetch_errors.csv`，不能把全缺失财务摘要当作成功抓取。
 
 Guide-backed free sources can fill these gaps:
 
 | Source | Filled data gap | Source class |
 |---|---|---|
 | Tencent quote API | Latest price, open, previous close, high, low, volume, amount, turnover, dynamic PE, total market cap, and float market cap. | `public_market_data` |
-| Tonghuashun via AkShare financial abstract | Five-year revenue, profit, non-recurring profit, growth rates, EPS, BPS, operating cash flow per share, gross margin, net margin, ROE, and liability ratio. | `public_market_data` |
+| AkShare `stock_zh_a_hist(..., adjust="qfq")` | 5-day and 20-day historical returns from forward-adjusted closing prices. | `public_market_data` |
+| AkShare `stock_financial_abstract` | Latest-period revenue, profit, non-recurring profit, growth rates, gross margin, net margin, ROE, liability ratio, and operating cash flow when the source exposes those fields. | `public_market_data` |
 | Eastmoney data center | Income statement, balance sheet, and cash-flow statement fields. | `public_market_data` |
 | Calculated fields | Shares, CAGR, EV, EV/Revenue, and EV/EBITDA when every input is sourced. | `public_market_data` with formula in the basis note |
 
 The same guide does not fill industry size, industry growth, penetration,
 orders, capacity, customers, technology route, risk-event announcements, capital
-flow, margin financing, northbound holdings, or historical 5-day and 20-day
-returns. Keep those fields as `missing_source` unless another reliable source is
-provided.
+flow, margin financing, or northbound holdings. Keep those fields as
+`missing_source` unless another reliable source is provided.
 
 ## Research-pack input contract
 
@@ -76,8 +84,8 @@ The recommended package contains these files:
 |---|---|---|
 | `source_manifest.json` | Yes | Declares each input file's source type, source name, data time, basis, verification status, and missing-data behavior. |
 | `peer_universe.csv` | Yes | Defines the 8 to 15 candidate A-share companies, exchange, board, peer group, theme role, and exposure source reference. |
-| `market_snapshot.csv` | No | Provides timestamped price, valuation, market-cap, and liquidity fields. |
-| `financial_summary.csv` | No | Provides period-tagged revenue, profit, margin, ROE, leverage, and cash-flow fields. |
+| `market_snapshot.csv` | No | Provides timestamped price, valuation, market-cap, liquidity, and short-term historical performance fields. |
+| `financial_summary.csv` | No | Provides latest-period revenue, profit, margin, ROE, leverage, and cash-flow fields. |
 | `company_exposure.md` | No | Stores business exposure, order, capacity, customer, product, and technology-route evidence grouped by company code. |
 | `events_and_risks.md` | No | Stores catalysts, regulatory events, reductions, unlocks, ST, suspension, and failure-condition evidence grouped by company code. |
 | `candidate_peer_universe.csv` | No | Stores the full auto-generated candidate pool, public board source, selection metric, and verification status. |

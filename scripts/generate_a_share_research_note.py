@@ -136,6 +136,8 @@ def comps_summary(rows: list[dict[str, str]], stats: list[dict[str, str]]) -> li
             f"{clean_value(row.get('name'))}：市值 {clean_value(row.get('market_cap'))}，"
             f"PE {clean_value(row.get('pe_ttm'))}，PB {clean_value(row.get('pb'))}，"
             f"PS {clean_value(row.get('ps_ttm'))}，ROE {clean_value(row.get('roe'))}，"
+            f"短期表现 5日 {return_label(row.get('return_5d'))} / "
+            f"20日 {return_label(row.get('return_20d'))}，"
             f"质量标记 {clean_value(row.get('data_quality_flag'))}"
         )
     if stats:
@@ -147,6 +149,24 @@ def comps_summary(rows: list[dict[str, str]], stats: list[dict[str, str]]) -> li
     return result
 
 
+def return_label(value: str | None) -> str:
+    cleaned = clean_value(value)
+    if cleaned == MISSING:
+        return MISSING
+    return f"{cleaned}%"
+
+
+def short_performance_summary(rows: list[dict[str, str]]) -> list[str]:
+    result: list[str] = []
+    for row in top_rows(rows, 8):
+        result.append(
+            f"{clean_value(row.get('name'))}：5日 {return_label(row.get('return_5d'))}，"
+            f"20日 {return_label(row.get('return_20d'))}；"
+            "短期表现来自前复权收盘价，仅作历史区间表现展示，不代表未来结果。"
+        )
+    return result
+
+
 def idea_summary(rows: list[dict[str, str]]) -> list[str]:
     result: list[str] = []
     for row in top_rows(rows, 5):
@@ -154,6 +174,7 @@ def idea_summary(rows: list[dict[str, str]]) -> list[str]:
             f"{clean_value(row.get('name'))}（{clean_value(row.get('code'))}）："
             f"{clean_value(row.get('research_priority'))}；"
             f"{clean_value(row.get('theme_exposure'))}；"
+            f"短期表现口径：{clean_value(row.get('price_performance_basis'))}；"
             f"催化：{clean_value(row.get('catalyst'))}；"
             f"失效条件：{clean_value(row.get('failure_conditions'))}"
         )
@@ -235,6 +256,10 @@ def build_note(theme: str, angle: str, as_of: str, inputs: dict[str, object]) ->
             "## 可比公司分析",
             "",
             bullet_lines(comps_summary(comps_rows, stats)),
+            "",
+            "### 短期表现口径",
+            "",
+            bullet_lines(short_performance_summary(comps_rows)),
             "",
             "## 想法清单",
             "",

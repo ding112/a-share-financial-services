@@ -73,6 +73,7 @@ REQUIRED_IDEA_COLUMNS = [
     "theme_role",
     "theme_exposure",
     "valuation_or_quality_basis",
+    "price_performance_basis",
     "liquidity_basis",
     "why_now",
     "catalyst",
@@ -202,6 +203,13 @@ def validate_research_handoff() -> list[str]:
                 missing = [column for column in REQUIRED_IDEA_COLUMNS if column not in header]
                 if missing:
                     errors.append(f"{pack_name} idea_inputs.csv missing columns: {', '.join(missing)}")
+                with idea_path.open(newline="", encoding="utf-8") as handle:
+                    rows = list(csv.DictReader(handle))
+                if rows and pack_name != "low-altitude-economy":
+                    if "5日" not in rows[0].get("price_performance_basis", ""):
+                        errors.append(
+                            f"{pack_name} idea_inputs.csv should include short-term performance basis"
+                        )
 
             risk_path = handoff_dir / "idea_risk_register.csv"
             if risk_path.is_file():

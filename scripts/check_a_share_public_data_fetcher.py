@@ -4,11 +4,14 @@
 from __future__ import annotations
 
 import csv
+import contextlib
 import importlib.util
 import json
+import types
 import subprocess
 import sys
 import tempfile
+import io
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -24,8 +27,11 @@ REQUIRED_TOKENS = [
     "def read_peer_universe",
     "def fetch_market_snapshot",
     "def fetch_financial_summary",
+    "def calculate_price_performance",
+    "def map_akshare_financial_summary",
     "def write_source_manifest",
     "def write_fetch_errors",
+    "def run_pipeline",
     "def main",
     "--peer-universe",
     "--output-dir",
@@ -49,6 +55,9 @@ REQUIRED_MARKET_COLUMNS = [
     "pe_ttm",
     "pb",
     "ps_ttm",
+    "return_5d",
+    "return_20d",
+    "return_basis",
     "snapshot_time",
     "basis",
 ]
@@ -137,6 +146,135 @@ def validate_public_data_fetcher() -> list[str]:
         if observed != expected:
             errors.append(f"eastmoney_secid({code!r}) returned {observed!r}")
 
+    price_rows = [
+        {"日期": f"2026-04-{index + 1:02d}", "收盘": str(100 + index)}
+        for index in range(21)
+    ]
+    performance = module.calculate_price_performance(price_rows)
+    if performance.get("return_5d") != "4.3478":
+        errors.append(
+            "calculate_price_performance should use latest qfq close versus "
+            "5 trading days ago"
+        )
+    if performance.get("return_20d") != "20":
+        errors.append(
+            "calculate_price_performance should use latest qfq close versus "
+            "20 trading days ago"
+        )
+    if "前复权收盘价" not in performance.get("return_basis", ""):
+        errors.append("calculate_price_performance missing qfq return basis")
+
+    short_performance = module.calculate_price_performance(price_rows[:5])
+    if short_performance.get("return_5d") != "来源缺失":
+        errors.append("calculate_price_performance should mark short 5d samples missing")
+    if short_performance.get("return_20d") != "来源缺失":
+        errors.append("calculate_price_performance should mark short 20d samples missing")
+
+    financial_rows = [
+        {
+            "报告期": "2024-12-31",
+            "营业总收入": "100",
+            "营业总收入同比增长率": "5",
+            "归母净利润": "10",
+            "扣非净利润": "8",
+            "销售毛利率": "20",
+            "销售净利率": "10",
+            "净资产收益率": "11",
+            "资产负债率": "40",
+            "经营现金流量净额": "9",
+        },
+        {
+            "报告期": "2025-03-31",
+            "营业总收入": "120",
+            "营业总收入同比增长率": "6",
+            "归母净利润": "12",
+            "扣非净利润": "9",
+            "销售毛利率": "21",
+            "销售净利率": "11",
+            "净资产收益率": "12",
+            "资产负债率": "39",
+            "经营现金流量净额": "10",
+        },
+    ]
+    mapped = module.map_akshare_financial_summary("300750.SZ", financial_rows)
+    if mapped.get("period") != "2025-03-31":
+        errors.append("map_akshare_financial_summary should select latest report period")
+    expected_mapped = {
+        "revenue": "120",
+        "revenue_growth": "6",
+        "net_profit": "12",
+        "deducted_net_profit": "9",
+        "gross_margin": "21",
+        "net_margin": "11",
+        "roe": "12",
+        "asset_liability_ratio": "39",
+        "operating_cash_flow": "10",
+    }
+    for field, expected in expected_mapped.items():
+        if mapped.get(field) != expected:
+            errors.append(f"map_akshare_financial_summary mapped {field} to {mapped.get(field)!r}")
+
+    wide_financial_rows = [
+        {"指标": "营业总收入", "2024-12-31": "100", "2025-03-31": "120"},
+        {"指标": "营业总收入同比增长率", "2024-12-31": "5", "2025-03-31": "6"},
+        {"指标": "归母净利润", "2024-12-31": "10", "2025-03-31": "12"},
+        {"指标": "扣非净利润", "2024-12-31": "8", "2025-03-31": "9"},
+        {"指标": "销售毛利率", "2024-12-31": "20", "2025-03-31": "21"},
+        {"指标": "销售净利率", "2024-12-31": "10", "2025-03-31": "11"},
+        {"指标": "净资产收益率", "2024-12-31": "11", "2025-03-31": "12"},
+        {"指标": "资产负债率", "2024-12-31": "40", "2025-03-31": "39"},
+        {"指标": "经营现金流量净额", "2024-12-31": "9", "2025-03-31": "10"},
+    ]
+    wide_mapped = module.map_akshare_financial_summary("300750.SZ", wide_financial_rows)
+    if wide_mapped.get("period") != "2025-03-31":
+        errors.append("map_akshare_financial_summary should select latest wide-table period")
+    for field, expected in expected_mapped.items():
+        if wide_mapped.get(field) != expected:
+            errors.append(
+                f"map_akshare_financial_summary wide table mapped {field} to {wide_mapped.get(field)!r}"
+            )
+
+    def failing_fetch(_code: str) -> dict[str, str]:
+        raise RuntimeError("simulated akshare outage")
+
+    original_fetch_akshare = module.fetch_akshare_financial_row
+    module.fetch_akshare_financial_row = failing_fetch
+    try:
+        _akshare_rows, akshare_errors = module.fetch_financial_summary(
+            [{"code": "300750.SZ"}],
+            "akshare",
+        )
+    except RuntimeError:
+        pass
+    else:
+        errors.append("fetch_financial_summary should raise when explicit akshare source fails")
+        if not akshare_errors:
+            errors.append("fetch_financial_summary should preserve akshare failure details")
+    finally:
+        module.fetch_akshare_financial_row = original_fetch_akshare
+
+    if hasattr(module, "run_pipeline"):
+        def failing_financial_summary(_peers: list[dict[str, str]], _source: str):
+            return [], [{"code": "300750.SZ", "source": "akshare", "stage": "financial_summary", "error": "boom"}]
+
+        original_financial_summary = module.fetch_financial_summary
+        module.fetch_financial_summary = failing_financial_summary
+        try:
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                akshare_exit = module.run_pipeline(
+                    types.SimpleNamespace(
+                        peer_universe=str(FIXTURE_PACK / "peer_universe.csv"),
+                        output_dir=str(Path(tempfile.mkdtemp()) / "akshare-failure"),
+                        as_of="2026-05-21 15:00:00",
+                        market_source="fixture",
+                        financial_source="akshare",
+                    )
+                )
+            if akshare_exit == 0:
+                errors.append("run_pipeline should return non-zero for explicit akshare financial errors")
+        finally:
+            module.fetch_financial_summary = original_financial_summary
+
     with tempfile.TemporaryDirectory() as tmp:
         output_dir = Path(tmp) / "public-data"
         smoke = subprocess.run(
@@ -198,6 +336,14 @@ def validate_public_data_fetcher() -> list[str]:
             for filename in ["market_snapshot.csv", "financial_summary.csv"]:
                 if filename not in files:
                     errors.append(f"source_manifest.json missing {filename}")
+            performance_entries = [
+                item
+                for item in manifest.get("files", [])
+                if item.get("file") == "market_snapshot.csv"
+                and item.get("field_group") == "price_performance"
+            ]
+            if not performance_entries:
+                errors.append("source_manifest.json missing market_snapshot.csv price_performance field_group")
 
         topic_dir = Path(tmp) / "机器人产业链"
         research_pack = topic_dir / "research-pack"

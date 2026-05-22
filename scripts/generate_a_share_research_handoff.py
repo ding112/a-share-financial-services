@@ -25,6 +25,8 @@ COMPETITIVE_FIELDS = [
     "revenue_growth",
     "net_profit",
     "roe",
+    "return_5d",
+    "return_20d",
     "data_quality_flag",
     "risk_flags",
     "comps_handoff_note",
@@ -37,6 +39,7 @@ IDEA_FIELDS = [
     "theme_role",
     "theme_exposure",
     "valuation_or_quality_basis",
+    "price_performance_basis",
     "liquidity_basis",
     "why_now",
     "catalyst",
@@ -134,6 +137,21 @@ def valuation_basis(row: dict[str, str], gaps_by_code: dict[str, list[str]]) -> 
     return basis
 
 
+def return_label(value: str | None) -> str:
+    cleaned = clean_value(value)
+    if cleaned == MISSING:
+        return MISSING
+    return f"{cleaned}%"
+
+
+def price_performance_basis(row: dict[str, str]) -> str:
+    return (
+        f"5日 {return_label(row.get('return_5d'))}，"
+        f"20日 {return_label(row.get('return_20d'))}；"
+        "仅作 AkShare 前复权短期表现展示，不代表未来结果，也不作为优先级排序依据"
+    )
+
+
 def build_gap_index(gaps: list[dict[str, str]]) -> dict[str, list[str]]:
     result: dict[str, list[str]] = {}
     for row in gaps:
@@ -192,6 +210,8 @@ def build_competitive_handoff(
                 "revenue_growth": clean_value(financial.get("revenue_growth")),
                 "net_profit": clean_value(comps.get("net_profit")),
                 "roe": clean_value(comps.get("roe")),
+                "return_5d": clean_value(comps.get("return_5d")),
+                "return_20d": clean_value(comps.get("return_20d")),
                 "data_quality_flag": data_quality,
                 "risk_flags": clean_value(exceptions or risk_facts.get(code)),
                 "comps_handoff_note": note,
@@ -218,6 +238,7 @@ def build_idea_inputs(
                 "theme_role": row["theme_role"],
                 "theme_exposure": row["exposure_summary"],
                 "valuation_or_quality_basis": valuation_basis(row, gaps_by_code),
+                "price_performance_basis": price_performance_basis(row),
                 "liquidity_basis": f"市值 {row['market_cap']}；data_quality {row['data_quality_flag']}",
                 "why_now": why_now,
                 "catalyst": catalyst,

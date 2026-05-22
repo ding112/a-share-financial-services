@@ -59,6 +59,8 @@ REQUIRED_MAIN_COLUMNS = [
     "pe_ttm",
     "pb",
     "ps_ttm",
+    "return_5d",
+    "return_20d",
     "revenue",
     "net_profit",
     "roe",
@@ -157,6 +159,14 @@ def validate_comps_generator() -> list[str]:
                 missing = [column for column in REQUIRED_MAIN_COLUMNS if column not in header]
                 if missing:
                     errors.append(f"{pack_name} comps_main.csv missing columns: {', '.join(missing)}")
+                with main_path.open(newline="", encoding="utf-8") as handle:
+                    rows = list(csv.DictReader(handle))
+                if rows and pack_name != "low-altitude-economy":
+                    first = rows[0]
+                    if first.get("return_5d") in {"", "来源缺失", None}:
+                        errors.append(f"{pack_name} comps_main.csv should expose return_5d")
+                    if first.get("return_20d") in {"", "来源缺失", None}:
+                        errors.append(f"{pack_name} comps_main.csv should expose return_20d")
 
             stat_path = output_dir / "comps_statistics.csv"
             if stat_path.is_file():
@@ -164,6 +174,12 @@ def validate_comps_generator() -> list[str]:
                 missing = [column for column in REQUIRED_STAT_COLUMNS if column not in header]
                 if missing:
                     errors.append(f"{pack_name} comps_statistics.csv missing columns: {', '.join(missing)}")
+                with stat_path.open(newline="", encoding="utf-8") as handle:
+                    stat_rows = list(csv.DictReader(handle))
+                stat_metrics = {row.get("metric") for row in stat_rows}
+                for metric in ["return_5d", "return_20d"]:
+                    if metric in stat_metrics:
+                        errors.append(f"{pack_name} comps_statistics.csv must not rank {metric}")
 
             summary_path = output_dir / "comps_summary.md"
             if summary_path.is_file():
