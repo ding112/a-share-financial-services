@@ -92,7 +92,7 @@ def validate_auto_prepare() -> list[str]:
             errors.append(f"{SCRIPT.relative_to(ROOT)} --help missing {token}")
 
     with tempfile.TemporaryDirectory() as tmp:
-        output_dir = Path(tmp) / "robotics-research-pack"
+        output_dir = Path(tmp) / "机器人产业链" / "research-pack"
         smoke = subprocess.run(
             [
                 sys.executable,

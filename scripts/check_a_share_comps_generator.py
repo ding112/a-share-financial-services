@@ -121,7 +121,8 @@ def validate_comps_generator() -> list[str]:
     with tempfile.TemporaryDirectory() as tmp:
         for pack_name, theme in FIXTURE_PACKS:
             fixture_pack = ROOT / "fixtures/a-share-research-packs" / pack_name
-            output_dir = Path(tmp) / f"{pack_name}-comps"
+            topic_dir = Path(tmp) / theme
+            output_dir = topic_dir / "comps"
             smoke = subprocess.run(
                 [
                     sys.executable,

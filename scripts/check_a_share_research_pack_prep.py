@@ -57,7 +57,7 @@ def validate_prep_script() -> list[str]:
 
     with tempfile.TemporaryDirectory() as tmp:
         input_dir = Path(tmp) / "input"
-        output_dir = Path(tmp) / "output"
+        output_dir = Path(tmp) / "测试主题" / "research-pack"
         input_dir.mkdir()
         (input_dir / "peer_universe.csv").write_text(
             "code,name,exchange,board,peer_group,theme_role,exposure_summary,exposure_source_ref\n"

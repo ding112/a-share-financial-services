@@ -121,6 +121,25 @@ The optional comps workbook is generated from the phase 5 CSV artifacts. It is
 for analyst review and formatting convenience only; the CSV files remain the
 auditable source of truth.
 
+## 本地输出目录约定
+
+默认输出根目录必须是 `./out/<中文主题>/`。主题目录名只基于 `--theme`，
+不要把研究角度 `--angle` 拼进目录名。阶段产物放在固定英文子目录中：
+
+```text
+out/机器人产业链/
+  research-pack/
+  comps/
+  workbook/
+  handoff/
+  note/
+```
+
+不要创建 `./out/<中文主题>-research-pack`、`./out/<中文主题>-comps`、
+`./out/<中文主题>-handoff` 或 `./out/<中文主题>-note` 这类平铺阶段目录。
+同一主题重复运行时，默认覆盖对应阶段目录中的生成物；如需保留多个版本，
+由调用方显式选择新的主题目录名。
+
 ## 端到端 fixture
 
 使用 `robotics-reducer` fixture 复现本地只读 workflow。所有命令都只读取
@@ -142,20 +161,20 @@ python -m pip install -r requirements.txt
 ```bash
 .venv/bin/python scripts/auto_prepare_a_share_research_pack.py \
   --theme 机器人产业链 \
-  --output-dir out/robotics-reducer-research-pack \
+  --output-dir out/机器人产业链/research-pack \
   --as-of 2026-05-22
 ```
 
 命令写出：
 
 ```text
-out/robotics-reducer-research-pack/candidate_peer_universe.csv
-out/robotics-reducer-research-pack/peer_universe.csv
-out/robotics-reducer-research-pack/market_snapshot.csv
-out/robotics-reducer-research-pack/financial_summary.csv
-out/robotics-reducer-research-pack/source_manifest.json
-out/robotics-reducer-research-pack/fetch_errors.csv
-out/robotics-reducer-research-pack/auto_prepare_manifest.json
+out/机器人产业链/research-pack/candidate_peer_universe.csv
+out/机器人产业链/research-pack/peer_universe.csv
+out/机器人产业链/research-pack/market_snapshot.csv
+out/机器人产业链/research-pack/financial_summary.csv
+out/机器人产业链/research-pack/source_manifest.json
+out/机器人产业链/research-pack/fetch_errors.csv
+out/机器人产业链/research-pack/auto_prepare_manifest.json
 ```
 
 先把本地 raw exports 整理成标准 `research-pack/`：
@@ -163,7 +182,7 @@ out/robotics-reducer-research-pack/auto_prepare_manifest.json
 ```bash
 python3 scripts/prepare_a_share_research_pack.py \
   --input-dir fixtures/a-share-raw-exports/robotics-reducer \
-  --output-dir out/robotics-reducer-research-pack \
+  --output-dir out/机器人产业链/research-pack \
   --theme 机器人产业链 \
   --as-of 2026-05-17
 ```
@@ -171,40 +190,40 @@ python3 scripts/prepare_a_share_research_pack.py \
 命令写出：
 
 ```text
-out/robotics-reducer-research-pack/source_manifest.json
-out/robotics-reducer-research-pack/peer_universe.csv
-out/robotics-reducer-research-pack/market_snapshot.csv
-out/robotics-reducer-research-pack/financial_summary.csv
-out/robotics-reducer-research-pack/company_exposure.md
-out/robotics-reducer-research-pack/events_and_risks.md
+out/机器人产业链/research-pack/source_manifest.json
+out/机器人产业链/research-pack/peer_universe.csv
+out/机器人产业链/research-pack/market_snapshot.csv
+out/机器人产业链/research-pack/financial_summary.csv
+out/机器人产业链/research-pack/company_exposure.md
+out/机器人产业链/research-pack/events_and_risks.md
 ```
 
 然后生成阶段 5 comps artifacts：
 
 ```bash
 python3 scripts/generate_a_share_comps_artifacts.py \
-  --research-pack out/robotics-reducer-research-pack \
-  --output-dir out/robotics-reducer-comps \
+  --research-pack out/机器人产业链/research-pack \
+  --output-dir out/机器人产业链/comps \
   --theme 机器人产业链
 ```
 
 命令写出：
 
 ```text
-out/robotics-reducer-comps/comps_main.csv
-out/robotics-reducer-comps/comps_source_notes.csv
-out/robotics-reducer-comps/comps_exceptions.csv
-out/robotics-reducer-comps/comps_statistics.csv
-out/robotics-reducer-comps/comps_data_gaps.csv
-out/robotics-reducer-comps/comps_summary.md
+out/机器人产业链/comps/comps_main.csv
+out/机器人产业链/comps/comps_source_notes.csv
+out/机器人产业链/comps/comps_exceptions.csv
+out/机器人产业链/comps/comps_statistics.csv
+out/机器人产业链/comps/comps_data_gaps.csv
+out/机器人产业链/comps/comps_summary.md
 ```
 
 可选：从阶段 5 CSV artifacts 生成分析师复核用 workbook：
 
 ```bash
 python3 scripts/generate_a_share_comps_workbook.py \
-  --comps-dir out/robotics-reducer-comps \
-  --output out/机器人产业链可比公司.xlsx \
+  --comps-dir out/机器人产业链/comps \
+  --output out/机器人产业链/workbook/机器人产业链可比公司.xlsx \
   --theme 机器人产业链
 ```
 
@@ -212,29 +231,29 @@ python3 scripts/generate_a_share_comps_workbook.py \
 
 ```bash
 python3 scripts/generate_a_share_research_handoff.py \
-  --research-pack out/robotics-reducer-research-pack \
-  --comps-dir out/robotics-reducer-comps \
-  --output-dir out/robotics-reducer-handoff \
+  --research-pack out/机器人产业链/research-pack \
+  --comps-dir out/机器人产业链/comps \
+  --output-dir out/机器人产业链/handoff \
   --theme 机器人产业链
 ```
 
 命令写出：
 
 ```text
-out/robotics-reducer-handoff/competitive_handoff.csv
-out/robotics-reducer-handoff/idea_inputs.csv
-out/robotics-reducer-handoff/idea_risk_register.csv
-out/robotics-reducer-handoff/research_handoff_summary.md
+out/机器人产业链/handoff/competitive_handoff.csv
+out/机器人产业链/handoff/idea_inputs.csv
+out/机器人产业链/handoff/idea_risk_register.csv
+out/机器人产业链/handoff/research_handoff_summary.md
 ```
 
 最后组装阶段 7 中文研究 note 和路演大纲：
 
 ```bash
 python3 scripts/generate_a_share_research_note.py \
-  --research-pack out/robotics-reducer-research-pack \
-  --comps-dir out/robotics-reducer-comps \
-  --handoff-dir out/robotics-reducer-handoff \
-  --output-dir out/robotics-reducer-note \
+  --research-pack out/机器人产业链/research-pack \
+  --comps-dir out/机器人产业链/comps \
+  --handoff-dir out/机器人产业链/handoff \
+  --output-dir out/机器人产业链/note \
   --theme 机器人产业链 \
   --angle 关注减速器国产替代和机器人量产弹性 \
   --as-of 2026-05-18
@@ -243,9 +262,9 @@ python3 scripts/generate_a_share_research_note.py \
 命令写出：
 
 ```text
-out/robotics-reducer-note/机器人产业链行业研究.md
-out/robotics-reducer-note/机器人产业链路演大纲.md
-out/robotics-reducer-note/research_assembly_manifest.json
+out/机器人产业链/note/机器人产业链行业研究.md
+out/机器人产业链/note/机器人产业链路演大纲.md
+out/机器人产业链/note/research_assembly_manifest.json
 ```
 
 ## Security & handoffs
@@ -262,9 +281,10 @@ comps spreading, and writing separate:
 | **`note-writer`** (Write-holder) | No | `Read`, `Write`, `Edit` | None |
 
 `sector-reader` returns length-capped, schema-validated JSON.
-`note-writer` produces a Chinese-named Markdown file under `./out/`, such as
-`./out/机器人产业链行业研究.md`, and optional Chinese-named slides only when
-requested.
+`note-writer` produces Chinese-named Markdown files under
+`./out/<中文主题>/note/`, such as
+`./out/机器人产业链/note/机器人产业链行业研究.md`, and optional Chinese-named
+slides only when requested.
 
 **Handoff:** use `a-share-screener` when the user asks for short-term topic,
 event, quant, or risk screening lists. Use an equity-research workflow when a

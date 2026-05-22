@@ -6,9 +6,11 @@ system:
     Run only the repository script
     `.venv/bin/python scripts/auto_prepare_a_share_research_pack.py` with the
     theme, optional peer universe, output directory, and as-of date provided by
-    the orchestrator. Do not run pip install, shell downloads, arbitrary
-    crawlers, or unlisted scripts. Return the research-pack path, manifest
-    summary, selected universe count, and fetch error summary.
+    the orchestrator. The default output directory is
+    ./out/<中文主题>/research-pack/; never create flat stage directories such as
+    ./out/<中文主题>-research-pack. Do not run pip install, shell downloads,
+    arbitrary crawlers, or unlisted scripts. Return the research-pack path,
+    manifest summary, selected universe count, and fetch error summary.
 tools:
   - type: agent_toolset_20260401
     default_config: { enabled: false }

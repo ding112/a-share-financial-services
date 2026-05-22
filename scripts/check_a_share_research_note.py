@@ -89,9 +89,10 @@ def validate_research_note() -> list[str]:
         tmp_dir = Path(tmp)
         for pack_name, theme, angle in FIXTURE_PACKS:
             pack_dir = ROOT / "fixtures/a-share-research-packs" / pack_name
-            comps_dir = tmp_dir / f"{pack_name}-comps"
-            handoff_dir = tmp_dir / f"{pack_name}-handoff"
-            note_dir = tmp_dir / f"{pack_name}-note"
+            topic_dir = tmp_dir / theme
+            comps_dir = topic_dir / "comps"
+            handoff_dir = topic_dir / "handoff"
+            note_dir = topic_dir / "note"
 
             comps = subprocess.run(
                 [

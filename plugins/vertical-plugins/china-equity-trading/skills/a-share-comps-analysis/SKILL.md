@@ -278,7 +278,8 @@ Run these checks before returning output:
 When the user provides a `research-pack/`, return a comps artifact set in
 addition to the narrative Markdown. The artifact set is a logical contract:
 in a chat response, present each file as a Markdown table; in headless mode,
-write files under `./out/<中文主题>-comps/` when write access is available.
+write files under `./out/<中文主题>/comps/` when write access is available.
+Do not create flat stage directories such as `./out/<中文主题>-comps/`.
 
 Required artifact files:
 
@@ -391,7 +392,7 @@ Required workbook file:
 
 | File | Use |
 |---|---|
-| `a_share_comps_workbook.xlsx` | Excel-readable workbook containing the comps spread, source notes, exceptions, statistics, data gaps, and summary. |
+| `./out/<中文主题>/workbook/<中文主题>可比公司.xlsx` | Excel-readable workbook containing the comps spread, source notes, exceptions, statistics, data gaps, and summary. |
 
 Required sheets:
 

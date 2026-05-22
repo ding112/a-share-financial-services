@@ -5,7 +5,7 @@ model: claude-opus-4-7
 
 system:
   file: ../../plugins/agent-plugins/a-share-market-researcher/agents/a-share-market-researcher.md
-  append: "You are running headless. Produce files in ./out/; do not assume an open Office document. Always write Chinese outputs."
+  append: "You are running headless. Produce files under ./out/<中文主题>/{research-pack,comps,workbook,handoff,note}/; do not create flat stage directories such as ./out/<中文主题>-comps; do not assume an open Office document. Always write Chinese outputs."
 
 tools:
   - type: agent_toolset_20260401

@@ -199,7 +199,8 @@ def validate_public_data_fetcher() -> list[str]:
                 if filename not in files:
                     errors.append(f"source_manifest.json missing {filename}")
 
-        research_pack = Path(tmp) / "research-pack"
+        topic_dir = Path(tmp) / "机器人产业链"
+        research_pack = topic_dir / "research-pack"
         prep = subprocess.run(
             [
                 sys.executable,
@@ -224,7 +225,7 @@ def validate_public_data_fetcher() -> list[str]:
                 f"{prep.returncode}: {prep.stderr.strip()}"
             )
 
-        comps_dir = Path(tmp) / "comps"
+        comps_dir = topic_dir / "comps"
         comps = subprocess.run(
             [
                 sys.executable,
