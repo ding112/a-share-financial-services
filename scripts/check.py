@@ -19,6 +19,19 @@ import sys
 from pathlib import Path
 
 from check_a_share_data_contract import validate_contract  # noqa: E402
+from check_a_share_idea_generation_contract import (  # noqa: E402
+    validate_contract as validate_idea_generation_contract,
+)
+from check_a_share_comps_artifact_contract import (  # noqa: E402
+    validate_contract as validate_comps_artifact_contract,
+)
+from check_a_share_comps_generator import validate_comps_generator  # noqa: E402
+from check_a_share_comps_workbook import validate_comps_workbook  # noqa: E402
+from check_a_share_research_handoff import validate_research_handoff  # noqa: E402
+from check_a_share_research_note import validate_research_note  # noqa: E402
+from check_a_share_research_pack_fixtures import validate_fixtures  # noqa: E402
+from check_a_share_research_pack_prep import validate_prep_script  # noqa: E402
+from check_a_share_public_data_fetcher import validate_public_data_fetcher  # noqa: E402
 
 try:
     import yaml
@@ -214,6 +227,34 @@ for d in sorted(MANAGED.iterdir()):
 # --- 6. A-share data source contract ---------------------------------------
 for contract_error in validate_contract():
     err(contract_error)
+
+for contract_error in validate_comps_artifact_contract():
+    err(contract_error)
+
+# --- 7. A-share idea generation contract -----------------------------------
+for contract_error in validate_idea_generation_contract():
+    err(contract_error)
+
+for fixture_error in validate_fixtures():
+    err(fixture_error)
+
+for prep_error in validate_prep_script():
+    err(prep_error)
+
+for public_data_error in validate_public_data_fetcher():
+    err(public_data_error)
+
+for generator_error in validate_comps_generator():
+    err(generator_error)
+
+for workbook_error in validate_comps_workbook():
+    err(workbook_error)
+
+for handoff_error in validate_research_handoff():
+    err(handoff_error)
+
+for note_error in validate_research_note():
+    err(note_error)
 
 # --- report ----------------------------------------------------------------
 if errors:

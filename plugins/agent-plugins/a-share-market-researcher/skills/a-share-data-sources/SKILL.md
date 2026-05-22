@@ -52,6 +52,23 @@ description: 为 A 股研究字段映射免费或公开数据源，分类来源�
 | 同花顺 AKShare 财务摘要 | 近 5 年营收、净利润、扣非净利润、营收增速、净利增速、EPS、BPS、经营现金流/股、毛利率、净利率、ROE、资产负债率 | `public_market_data` | 报告期，年报或报告期口径 |
 | 东方财富数据中心 | 利润表、资产负债表、现金流量表字段，包括营业收入、营业成本、归母净利润、总资产、总负债、货币资金、应收账款、存货、经营现金流、资本开支、折旧摊销 | `public_market_data` | 报告期，合并报表，金额单位 |
 
+## 第一版公开数据抓取器
+
+`scripts/fetch_a_share_public_data.py` 是第一版本地公开数据抓取器。它只负责
+把股票池中的 A 股代码转换为两个 research-pack 可消费文件：
+
+- `market_snapshot.csv`：行情、成交额、换手率、市值和公开估值快照。
+- `financial_summary.csv`：公开财务摘要、报告期、盈利质量和资产负债字段。
+
+该抓取器不覆盖行业规模、行业增速、渗透率、政策原文、公司公告、业务暴露、
+订单、产能、客户、技术路线、风险事件、东方财富三大报表明细、融资融券、
+北向资金或历史 5 日和 20 日收益率。缺失字段必须继续按本 skill 的降级规则
+写为 `来源缺失`、`待验证` 或 `口径不可比`。
+
+抓取器输出的 `source_manifest.json` 必须保留来源类型、来源名称、访问时间、
+报告期或口径、验证状态和缺失行为。下游技能不得把公开行情或公开财务摘要
+升级为法定披露事实。
+
 ## 字段来源契约
 
 每个字段必须有首选来源、可接受兜底和缺失行为。缺失行为是输出契约的一部分，
@@ -78,6 +95,122 @@ description: 为 A 股研究字段映射免费或公开数据源，分类来源�
 | 解禁、减持、回购、停复牌、ST、监管问询 | 巨潮资讯、交易所公告 | AkShare 事件类数据、用户材料 | 写 `来源缺失`，不得弱化风险 |
 | 融资融券、北向、资金流 | 交易所融资融券数据、AkShare 资金流数据 | 东方财富公开页面 | 写 `来源缺失`，不要写方向性判断 |
 | 指数、行业、概念成分 | 中证指数公开资料、AkShare 指数和板块数据 | 东方财富和同花顺公开概念页 | 概念标签只作线索，不作暴露证据 |
+
+## 研究数据包契约
+
+当用户或上游流程提供本地数据包时，优先按本节解析。数据包只表示 agent
+可以读取的输入格式；它不是实时数据接入，也不代表这些数据已经通过法定
+披露验证。
+
+推荐目录名为 `research-pack/`。如果用户使用其他目录名，文件名和字段契约
+仍按本节执行。
+
+| 文件 | 必需性 | 主要用途 | 缺失行为 |
+|---|---|---|---|
+| `source_manifest.json` | 必需 | 声明每个数据文件的来源、时间、口径和验证状态 | 整个数据包只能作为 `user_provided` 线索，不得升级为 `verified` |
+| `peer_universe.csv` | 必需 | 定义 8 到 15 只候选公司、交易所、主题暴露和 peer 分组 | 不能执行 comps 或 idea shortlist，只能要求补股票池 |
+| `market_snapshot.csv` | 可选 | 提供行情、估值、市值和流动性快照 | 行情、估值和流动性字段写 `来源缺失`，不得按最新表现排序 |
+| `financial_summary.csv` | 可选 | 提供报告期财务摘要、盈利质量和资产负债字段 | 财务和质量字段写 `来源缺失` 或 `口径不可比` |
+| `company_exposure.md` | 可选 | 保存公司业务暴露、订单、产能、客户和产品证据摘录 | 主题暴露只能进入 `待验证`，不得作为核心 idea 入选依据 |
+| `events_and_risks.md` | 可选 | 保存催化、监管、减持、解禁、ST、停复牌和失效条件 | 风险字段写 `来源缺失`，不得弱化风险语言 |
+
+### `source_manifest.json`
+
+`source_manifest.json` 必须是合法 JSON，并包含顶层 `files` 数组。数组中
+每一项描述一个输入文件。
+
+每一项必须包含这些字段：
+
+| 字段 | 含义 |
+|---|---|
+| `file` | 数据包内的相对文件路径 |
+| `source_type` | `来源等级契约` 中定义的来源类型 |
+| `source_name` | 站点、API wrapper、导出名称、公告名称或用户文件名 |
+| `data_time` | 访问时间、行情时间戳、公告日期或报告日期 |
+| `period_or_basis` | 报告期、TTM、LYR、快照、公式或来源口径 |
+| `verification_status` | `verified`、`user_provided`、`待验证` 或 `来源缺失` |
+| `missing_behavior` | 文件或字段缺失时，下游技能必须如何降级 |
+
+### `peer_universe.csv`
+
+`peer_universe.csv` 是阶段 1 的必需股票池文件。没有这个文件时，agent 不得
+自行扩展公司名单来完成 comps 或 idea shortlist。
+
+必需列：
+
+| 字段 | 含义 |
+|---|---|
+| `code` | A 股证券代码，例如 `300750.SZ` 或 `600519.SH` |
+| `name` | 中文证券简称 |
+| `exchange` | `SH`、`SZ` 或 `BJ` |
+| `board` | 主板、科创板、创业板、北交所或用户自定义板块 |
+| `peer_group` | comps 和竞争格局使用的可比分组 |
+| `theme_role` | 上游、中游、下游、平台、客户、替代品或其他主题角色 |
+| `exposure_summary` | 一句话业务暴露摘要 |
+| `exposure_source_ref` | 指向 `company_exposure.md` 或 source manifest 条目的引用 |
+
+### `market_snapshot.csv`
+
+`market_snapshot.csv` 是可选文件。存在时，只能作为带时间戳的行情、估值、
+市值和流动性快照；没有 `snapshot_time` 的行情字段不得用于排序。
+
+推荐列：
+
+| 字段 | 含义 |
+|---|---|
+| `code` | 与 `peer_universe.csv` 匹配的证券代码 |
+| `price` | 最新价或收盘价 |
+| `pct_change` | 快照周期涨跌幅 |
+| `amount` | 成交额 |
+| `turnover_rate` | 换手率 |
+| `market_cap` | 总市值 |
+| `float_market_cap` | 流通市值 |
+| `pe_ttm` | TTM 口径 PE |
+| `pb` | PB |
+| `ps_ttm` | TTM 口径 PS |
+| `snapshot_time` | 行情时间戳或访问时间 |
+| `basis` | 快照、收盘、前复权、未复权或用户提供口径 |
+
+### `financial_summary.csv`
+
+`financial_summary.csv` 是可选文件。存在时，财务字段必须带报告期和口径；
+报告期不一致时，保留字段但标记 `口径不可比`。
+
+推荐列：
+
+| 字段 | 含义 |
+|---|---|
+| `code` | 与 `peer_universe.csv` 匹配的证券代码 |
+| `period` | 报告期 |
+| `revenue` | 营业收入 |
+| `revenue_growth` | 营收增速 |
+| `net_profit` | 归母净利润 |
+| `deducted_net_profit` | 扣非归母净利润 |
+| `gross_margin` | 毛利率 |
+| `net_margin` | 净利率 |
+| `roe` | ROE |
+| `asset_liability_ratio` | 资产负债率 |
+| `operating_cash_flow` | 经营现金流 |
+| `basis` | 合并、母公司、年度、季度或用户提供口径 |
+
+### Markdown evidence files
+
+`company_exposure.md` 和 `events_and_risks.md` 是可选证据文件。它们必须按
+公司代码分组，并为每条证据保留来源类型、来源名称、数据时间、报告期或
+口径和验证状态。
+
+使用这个形状：
+
+```text
+## 300750.SZ 宁德时代
+
+- 事实: <业务暴露、订单、产能、客户、产品、催化或风险>
+  来源类型: <source_type>
+  来源名称: <source_name>
+  数据时间: <data_time>
+  报告期或口径: <period_or_basis>
+  验证状态: <verification_status>
+```
 
 ## 引用元数据 schema
 

@@ -8,6 +8,7 @@ Run `../scripts/deploy-managed-agent.sh <slug>` to upload skills, create leaf wo
 |---|---|---|---|---|
 | [`pitch-agent`](./pitch-agent/) | investment-banking | Comps, precedents, LBO → branded pitch deck | `Build pitch book: <target> / <acquirer>, thesis: <text>` | researcher · modeler · **deck-writer** |
 | [`market-researcher`](./market-researcher/) | equity-research | Sector or theme → overview, landscape, peer comps, ideas shortlist | `Primer: <sector or theme>, angle: <text>` | sector-reader · comps-spreader · **note-writer** |
+| [`a-share-market-researcher`](./a-share-market-researcher/) | china-equity-trading | A 股行业或主题 → 行业概览、竞争格局、可比公司、中文研究笔记 | `Primer: A股<行业或主题>, angle: <text>` | sector-reader · comps-spreader · **note-writer** |
 | [`earnings-reviewer`](./earnings-reviewer/) | equity-research | Earnings call + filings → model update → note draft | `Process earnings: <ticker> <period>` | transcript-reader · model-updater · **note-writer** |
 | [`meeting-prep-agent`](./meeting-prep-agent/) | wealth-management | Briefing pack before every client meeting | `Briefing pack for <client-id>, meeting <event-id>` | profiler · news-reader · **pack-writer** |
 | [`model-builder`](./model-builder/) | financial-analysis | DCF, LBO, 3-statement, comps — as a file | `Build <dcf\|lbo\|3-stmt> for <ticker>, assumptions: {...}` | data-puller · **builder** · auditor |
