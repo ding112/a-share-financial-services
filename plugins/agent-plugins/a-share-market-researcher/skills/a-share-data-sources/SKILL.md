@@ -69,6 +69,46 @@ description: 为 A 股研究字段映射免费或公开数据源，分类来源�
 报告期或口径、验证状态和缺失行为。下游技能不得把公开行情或公开财务摘要
 升级为法定披露事实。
 
+## 自动 research-pack 准备
+
+`scripts/auto_prepare_a_share_research_pack.py` 是 Claude Code 和 managed-agent
+data-prep worker 使用的一键准备入口。它负责在 `research-pack/` 缺失时生成
+本地可审计输入，不负责写 research note、comps artifact 或投资结论。
+
+运行环境必须在仓库当前目录提供 `.venv/bin/python`，并通过根目录
+`requirements.txt` 安装 AkShare。脚本不得自动运行 `pip install`，也不得
+下载或执行未列出的脚本。
+
+推荐调用：
+
+```bash
+.venv/bin/python scripts/auto_prepare_a_share_research_pack.py \
+  --theme 机器人产业链 \
+  --output-dir out/机器人产业链-research-pack \
+  --as-of 2026-05-22
+```
+
+当用户提供 `--peer-universe` 时，脚本以该股票池为准；当没有种子文件时，
+脚本用 AkShare 公开概念或行业板块成分生成候选股票池。自动生成的主题
+暴露只能标记为 `待验证` 或 `仅作线索`，不得把概念或板块成员关系升级为
+业务暴露事实。
+
+自动准备入口写出这些文件：
+
+| 文件 | 用途 |
+|---|---|
+| `candidate_peer_universe.csv` | 保存公开板块或用户股票池的完整候选，含候选来源、匹配板块和筛选指标。 |
+| `peer_universe.csv` | 保存进入 comps 的 8 到 15 只公司；自动生成时 `theme_role` 默认为 `待验证`。 |
+| `market_snapshot.csv` | 由公开行情来源生成的行情、估值、市值和流动性快照。 |
+| `financial_summary.csv` | 由公开财务摘要来源生成的报告期财务字段。 |
+| `source_manifest.json` | 声明每个文件的来源类型、来源名称、时间、口径、验证状态和缺失行为。 |
+| `fetch_errors.csv` | 记录部分行情或财务抓取失败；字段失败时下游必须写 `来源缺失`。 |
+| `auto_prepare_manifest.json` | 记录主题、输入、输出、候选数量、筛选规则和是否少于 8 只。 |
+
+默认筛选规则是按成交额降序、再按总市值降序、再按来源顺序，过滤名称包含
+ST、`*ST` 或退市风险的公司，最多保留 15 只。少于 8 只时可以继续流程，
+但必须在输出中提示分析师复核股票池。
+
 ## 字段来源契约
 
 每个字段必须有首选来源、可接受兜底和缺失行为。缺失行为是输出契约的一部分，

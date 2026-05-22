@@ -60,6 +60,19 @@ In Cowork, open **Settings → Plugins → Add plugin** and either:
 本地使用 `a-share-screener` 的安装和调用方式见
 [`docs/quick-start.md`](./docs/quick-start.md)。
 
+A-share Market Researcher 的自动 `research-pack` 准备流程需要本地 Python
+虚拟环境和 AkShare。先在仓库根目录创建 `.venv` 并安装依赖：
+
+```bash
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install -r requirements.txt
+```
+
+当 `a-share-market-researcher` 在 Claude Code 中缺少 `research-pack/` 时，
+它只会通过 `.venv/bin/python scripts/auto_prepare_a_share_research_pack.py`
+运行受控本地脚本；不会自动安装依赖，也不会运行未列出的抓取脚本。
+
 ```bash
 # Add the marketplace
 claude plugin marketplace add anthropics/claude-for-financial-services

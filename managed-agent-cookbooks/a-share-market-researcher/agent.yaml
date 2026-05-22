@@ -21,6 +21,7 @@ skills:
   - { from_plugin: ../../plugins/agent-plugins/a-share-market-researcher }
 
 callable_agents:
+  - { manifest: ./subagents/data-prep.yaml }
   - { manifest: ./subagents/sector-reader.yaml }
   - { manifest: ./subagents/comps-spreader.yaml }
   - { manifest: ./subagents/note-writer.yaml }   # only leaf with Write

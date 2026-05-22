@@ -1,0 +1,23 @@
+name: data-prep
+model: claude-opus-4-7
+system:
+  text: |
+    You prepare a local A-share research-pack before the research workflow.
+    Run only the repository script
+    `.venv/bin/python scripts/auto_prepare_a_share_research_pack.py` with the
+    theme, optional peer universe, output directory, and as-of date provided by
+    the orchestrator. Do not run pip install, shell downloads, arbitrary
+    crawlers, or unlisted scripts. Return the research-pack path, manifest
+    summary, selected universe count, and fetch error summary.
+tools:
+  - type: agent_toolset_20260401
+    default_config: { enabled: false }
+    configs:
+      - { name: read, enabled: true }
+      - { name: grep, enabled: true }
+      - { name: glob, enabled: true }
+      - { name: bash, enabled: true }
+mcp_servers: []
+skills:
+  - { path: ../../../plugins/agent-plugins/a-share-market-researcher/skills/a-share-data-sources }
+callable_agents: []

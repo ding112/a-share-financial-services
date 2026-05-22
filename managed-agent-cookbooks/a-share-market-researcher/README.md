@@ -11,6 +11,9 @@ Cowork plugin and runs it as a Managed Agent template.
 ## Deploy
 
 ```bash
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install -r ../../requirements.txt
 export ANTHROPIC_API_KEY=sk-ant-...
 ../../scripts/deploy-managed-agent.sh a-share-market-researcher
 ```
@@ -29,16 +32,21 @@ to free or public sources before drafting the note.
 `a-share-data-sources` 是随包分发的 skill，不是可直接调度的 agent type。
 外部入口使用 `a-share-market-researcher:a-share-market-researcher`；不要使用 `a-share-market-researcher:a-share-data-sources`。
 
-The current managed-agent template is read-only for source data: it can read
-user-provided files and extracts, but it does not execute the Tencent, AkShare,
-or Eastmoney network calls by default. When an upstream workflow provides a data
-package generated from those sources, classify it as `public_market_data` and
-preserve the original source name, access time, report period, and unit.
+The research workers are read-only for source data after the local data package
+exists: they can read user-provided files and extracts, but only the dedicated
+`data-prep` worker can execute the controlled local preparation script. When an
+upstream workflow or the data-prep worker provides a data package generated from
+Tencent, AkShare, Eastmoney, or similar public sources, classify it as
+`public_market_data` and preserve the original source name, access time, report
+period, and unit.
 
-上游公开数据抓取器是 `scripts/fetch_a_share_public_data.py`。它可以从本地
+公开数据抓取器是 `scripts/fetch_a_share_public_data.py`。它可以从本地
 `peer_universe.csv` 生成 `market_snapshot.csv`、`financial_summary.csv`、
-`source_manifest.json` 和 `fetch_errors.csv`。managed-agent 模板仍然只读取
-本地文件；它默认不运行抓取器，也不执行联网采集。
+`source_manifest.json` 和 `fetch_errors.csv`。一键入口是
+`scripts/auto_prepare_a_share_research_pack.py`；当没有种子文件时，它使用
+AkShare 公开概念或行业板块生成 `candidate_peer_universe.csv` 和
+`peer_universe.csv`，再调用公开数据抓取器补行情和财务摘要。自动生成的概念
+或板块成分只能作为 `待验证` 线索，不能作为已验证业务暴露。
 
 Guide-backed free sources can fill these gaps:
 
@@ -57,10 +65,10 @@ provided.
 
 ## Research-pack input contract
 
-Use `research-pack/` when an upstream workflow or analyst provides local files
-for a sector primer. The package is read-only input for the agent. It does not
-make the managed-agent template run Tencent, AkShare, Eastmoney, or any other
-network collection by default.
+Use `research-pack/` when an upstream workflow, analyst, or the dedicated
+data-prep worker provides local files for a sector primer. After the package
+exists, it is read-only input for the research workers; only `data-prep` runs
+the controlled preparation script.
 
 The recommended package contains these files:
 
@@ -72,6 +80,8 @@ The recommended package contains these files:
 | `financial_summary.csv` | No | Provides period-tagged revenue, profit, margin, ROE, leverage, and cash-flow fields. |
 | `company_exposure.md` | No | Stores business exposure, order, capacity, customer, product, and technology-route evidence grouped by company code. |
 | `events_and_risks.md` | No | Stores catalysts, regulatory events, reductions, unlocks, ST, suspension, and failure-condition evidence grouped by company code. |
+| `candidate_peer_universe.csv` | No | Stores the full auto-generated candidate pool, public board source, selection metric, and verification status. |
+| `auto_prepare_manifest.json` | No | Records theme, inputs, outputs, selected universe count, selection rule, and warnings for auditability. |
 
 If `source_manifest.json` is missing, treat the package as `user_provided`
 leads only. If `peer_universe.csv` is missing, stop before comps and idea
@@ -116,6 +126,37 @@ auditable source of truth.
 使用 `robotics-reducer` fixture 复现本地只读 workflow。所有命令都只读取
 本地文件，并把输出写到已忽略的 `out/` 目录；命令不会抓取腾讯、AkShare、
 东方财富或其他网络来源。
+
+若要让 Claude Code 或 managed-agent data-prep worker 自动准备数据包，先在
+仓库当前目录创建 `.venv` 并安装依赖：
+
+```bash
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install -r requirements.txt
+```
+
+然后运行一键入口。若不提供 `--peer-universe`，脚本会通过 AkShare 公开概念
+或行业板块生成候选池；离线测试可使用 fixture 数据源：
+
+```bash
+.venv/bin/python scripts/auto_prepare_a_share_research_pack.py \
+  --theme 机器人产业链 \
+  --output-dir out/robotics-reducer-research-pack \
+  --as-of 2026-05-22
+```
+
+命令写出：
+
+```text
+out/robotics-reducer-research-pack/candidate_peer_universe.csv
+out/robotics-reducer-research-pack/peer_universe.csv
+out/robotics-reducer-research-pack/market_snapshot.csv
+out/robotics-reducer-research-pack/financial_summary.csv
+out/robotics-reducer-research-pack/source_manifest.json
+out/robotics-reducer-research-pack/fetch_errors.csv
+out/robotics-reducer-research-pack/auto_prepare_manifest.json
+```
 
 先把本地 raw exports 整理成标准 `research-pack/`：
 
@@ -215,6 +256,7 @@ comps spreading, and writing separate:
 
 | Tier | Touches untrusted docs? | Tools | Connectors |
 |---|---|---|---|
+| `data-prep` | No | `Read`, `Grep`, `Glob`, `Bash` | None |
 | **`sector-reader`** | **Yes** | `Read`, `Grep` only | None |
 | `comps-spreader` / Orchestrator | No | `Read`, `Grep`, `Glob`, `Agent` | None |
 | **`note-writer`** (Write-holder) | No | `Read`, `Write`, `Edit` | None |
