@@ -159,6 +159,22 @@ def write_csv(path: Path, rows: list[dict[str, str]], fieldnames: list[str]) -> 
         writer.writerows(rows)
 
 
+def log_step(message: str) -> None:
+    print(f"[a-share-public-data] {message}", file=sys.stderr)
+
+
+def record_fetch_error(
+    errors: list[dict[str, str]],
+    code: str,
+    source: str,
+    stage: str,
+    exc: Exception | str,
+) -> None:
+    error = {"code": code, "source": source, "stage": stage, "error": str(exc)}
+    errors.append(error)
+    log_step(f"{stage} failed: code={code} source={source} error={exc}")
+
+
 def fetch_text(url: str, params: dict[str, str], encoding: str = "utf-8") -> str:
     query = urllib.parse.urlencode(params)
     full_url = f"{url}?{query}"
@@ -210,7 +226,7 @@ def akshare_retry_delay(attempt: int) -> float:
     return min(AKSHARE_RETRY_MAX_DELAY_SECONDS, AKSHARE_RETRY_DELAY_SECONDS * (2**attempt))
 
 
-def fetch_akshare_with_retries(operation: Callable[[], T]) -> T:
+def fetch_akshare_with_retries(operation: Callable[[], T], label: str = "AkShare operation") -> T:
     last_exc: Exception | None = None
     for attempt in range(AKSHARE_RETRY_ATTEMPTS):
         try:
@@ -219,10 +235,17 @@ def fetch_akshare_with_retries(operation: Callable[[], T]) -> T:
             if not is_transient_akshare_error(exc):
                 raise
             last_exc = exc
+            attempt_no = attempt + 1
             if attempt == AKSHARE_RETRY_ATTEMPTS - 1:
+                log_step(f"{label} failed after {attempt_no}/{AKSHARE_RETRY_ATTEMPTS}: {exc}")
                 break
             if AKSHARE_RETRY_DELAY_SECONDS > 0:
-                time.sleep(akshare_retry_delay(attempt))
+                delay = akshare_retry_delay(attempt)
+                log_step(
+                    f"{label} transient failure {attempt_no}/{AKSHARE_RETRY_ATTEMPTS}; "
+                    f"retrying in {delay}s: {exc}"
+                )
+                time.sleep(delay)
     if last_exc is not None:
         raise last_exc
     raise RuntimeError("AkShare retry operation did not run")
@@ -303,9 +326,30 @@ def fetch_akshare_price_performance(code: str, as_of: str) -> dict[str, str]:
             start_date=start_date,
             end_date=end_date,
             adjust="qfq",
-        )
+        ),
+        label=f"stock_zh_a_hist {symbol}",
     )
     return calculate_price_performance(frame.to_dict("records"))
+
+
+def fetch_tencent_price_performance(code: str) -> dict[str, str]:
+    symbol = tencent_symbol(code)
+    data = fetch_json(
+        "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get",
+        {"param": f"{symbol},day,,,130,qfq"},
+    )
+    payload = data.get("data", {}).get(symbol, {})
+    kline_rows = payload.get("qfqday") or payload.get("day") or []
+    price_rows = [
+        {"date": row[0], "close": row[2]}
+        for row in kline_rows
+        if isinstance(row, list) and len(row) >= 3
+    ]
+    result = calculate_price_performance(price_rows)
+    if result["return_basis"] != MISSING:
+        latest_date = price_rows[-1]["date"]
+        result["return_basis"] = f"腾讯前复权日 K 线，截至 {latest_date}"
+    return result
 
 
 _AKSHARE_SPOT_CACHE: dict[str, dict[str, str]] | None = None
@@ -317,7 +361,10 @@ def _load_akshare_spot_cache() -> dict[str, dict[str, str]]:
         return _AKSHARE_SPOT_CACHE
     import akshare as ak  # type: ignore[import-not-found]
 
-    frame = fetch_akshare_with_retries(lambda: ak.stock_zh_a_spot_em())
+    frame = fetch_akshare_with_retries(
+        lambda: ak.stock_zh_a_spot_em(),
+        label="stock_zh_a_spot_em",
+    )
     cache: dict[str, dict[str, str]] = {}
     for _, row in frame.iterrows():
         code_raw = str(row.get("代码", ""))
@@ -346,7 +393,10 @@ def fetch_akshare_ps_ttm(code: str) -> dict[str, str]:
     import akshare as ak  # type: ignore[import-not-found]
 
     symbol = normalize_a_share_code(code).split(".", 1)[0]
-    frame = fetch_akshare_with_retries(lambda: ak.stock_value_em(symbol=symbol))
+    frame = fetch_akshare_with_retries(
+        lambda: ak.stock_value_em(symbol=symbol),
+        label=f"stock_value_em {symbol}",
+    )
     records = frame.to_dict("records")
     if not records:
         return {"ps_ttm": MISSING}
@@ -412,8 +462,8 @@ def fetch_tencent_market_row(code: str, as_of: str) -> dict[str, str]:
         "pct_change": clean_value(fields[32]),
         "amount": amount,
         "turnover_rate": clean_value(fields[38]),
-        "volume_ratio": MISSING,
-        "amplitude": MISSING,
+        "volume_ratio": clean_value(fields[49]),
+        "amplitude": clean_value(fields[43]),
         "market_cap": yuan_from_yi(fields[45]),
         "float_market_cap": yuan_from_yi(fields[44]),
         "pe_ttm": clean_value(fields[52]),
@@ -463,19 +513,20 @@ def fetch_market_snapshot(
     rows: list[dict[str, str]] = []
     errors: list[dict[str, str]] = []
 
-    # Pre-load AkShare spot cache for volume_ratio and amplitude (once)
+    log_step(f"market_snapshot start: source={source} peers={len(peers)}")
+    # Eastmoney does not expose all spot indicators used by downstream comps.
     spot_cache_loaded = False
-    if source != "fixture":
+    if source == "eastmoney":
         try:
+            log_step("loading AkShare spot cache for volume_ratio and amplitude")
             _load_akshare_spot_cache()
             spot_cache_loaded = True
         except Exception as exc:
-            errors.append(
-                {"code": "*", "source": "akshare", "stage": "spot_cache", "error": str(exc)}
-            )
+            record_fetch_error(errors, "*", "akshare", "spot_cache", exc)
 
-    for peer in peers:
+    for index, peer in enumerate(peers, start=1):
         code = normalize_a_share_code(peer["code"])
+        log_step(f"market_snapshot {index}/{len(peers)}: code={code} source={source}")
         try:
             if source == "fixture":
                 rows.append(fixture_market_row(code, as_of))
@@ -484,64 +535,39 @@ def fetch_market_snapshot(
                 try:
                     row.update(fetch_akshare_price_performance(code, as_of))
                 except Exception as exc:
-                    errors.append(
-                        {
-                            "code": code,
-                            "source": "akshare",
-                            "stage": "price_performance",
-                            "error": str(exc),
-                        }
-                    )
+                    try:
+                        row.update(fetch_tencent_price_performance(code))
+                        log_step(f"price_performance fallback used: code={code} source=tencent")
+                    except Exception as fallback_exc:
+                        record_fetch_error(
+                            errors,
+                            code,
+                            "akshare",
+                            "price_performance",
+                            f"{exc}; tencent fallback failed: {fallback_exc}",
+                        )
                 if spot_cache_loaded:
                     row.update(fetch_akshare_spot_fields(code))
                 try:
                     row.update(fetch_akshare_ps_ttm(code))
                 except Exception as exc:
-                    errors.append(
-                        {
-                            "code": code,
-                            "source": "akshare",
-                            "stage": "ps_ttm",
-                            "error": str(exc),
-                        }
-                    )
+                    record_fetch_error(errors, code, "akshare", "ps_ttm", exc)
                 rows.append(row)
             else:
                 row = fetch_eastmoney_market_row(code, as_of)
                 try:
                     row.update(fetch_akshare_price_performance(code, as_of))
                 except Exception as exc:
-                    errors.append(
-                        {
-                            "code": code,
-                            "source": "akshare",
-                            "stage": "price_performance",
-                            "error": str(exc),
-                        }
-                    )
+                    record_fetch_error(errors, code, "akshare", "price_performance", exc)
                 if spot_cache_loaded:
                     row.update(fetch_akshare_spot_fields(code))
                 try:
                     row.update(fetch_akshare_ps_ttm(code))
                 except Exception as exc:
-                    errors.append(
-                        {
-                            "code": code,
-                            "source": "akshare",
-                            "stage": "ps_ttm",
-                            "error": str(exc),
-                        }
-                    )
+                    record_fetch_error(errors, code, "akshare", "ps_ttm", exc)
                 rows.append(row)
         except Exception as exc:
-            errors.append(
-                {
-                    "code": code,
-                    "source": source,
-                    "stage": "market_snapshot",
-                    "error": str(exc),
-                }
-            )
+            record_fetch_error(errors, code, source, "market_snapshot", exc)
             rows.append(
                 {
                     "code": code,
@@ -565,6 +591,7 @@ def fetch_market_snapshot(
                     "basis": "抓取失败，字段降级为来源缺失",
                 }
             )
+    log_step(f"market_snapshot complete: rows={len(rows)} errors={len(errors)}")
     return rows, errors
 
 
@@ -717,9 +744,15 @@ def fetch_akshare_financial_row(code: str) -> dict[str, str]:
 
     symbol = normalize_a_share_code(code).split(".", 1)[0]
     try:
-        frame = ak.stock_financial_abstract(stock=symbol)
+        frame = fetch_akshare_with_retries(
+            lambda: ak.stock_financial_abstract(stock=symbol),
+            label=f"stock_financial_abstract {symbol}",
+        )
     except TypeError:
-        frame = ak.stock_financial_abstract(symbol=symbol)
+        frame = fetch_akshare_with_retries(
+            lambda: ak.stock_financial_abstract(symbol=symbol),
+            label=f"stock_financial_abstract {symbol}",
+        )
     return map_akshare_financial_summary(code, frame.to_dict("records"))
 
 
@@ -729,8 +762,10 @@ def fetch_financial_summary(
 ) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
     rows: list[dict[str, str]] = []
     errors: list[dict[str, str]] = []
-    for peer in peers:
+    log_step(f"financial_summary start: source={source} peers={len(peers)}")
+    for index, peer in enumerate(peers, start=1):
         code = normalize_a_share_code(peer["code"])
+        log_step(f"financial_summary {index}/{len(peers)}: code={code} source={source}")
         try:
             if source == "fixture":
                 rows.append(fixture_financial_row(code))
@@ -739,18 +774,12 @@ def fetch_financial_summary(
             else:
                 rows.append(fetch_akshare_financial_row(code))
         except Exception as exc:
-            errors.append(
-                {
-                    "code": code,
-                    "source": source,
-                    "stage": "financial_summary",
-                    "error": str(exc),
-                }
-            )
+            record_fetch_error(errors, code, source, "financial_summary", exc)
             if source == "akshare":
                 rows.append({column: MISSING for column in FINANCIAL_COLUMNS} | {"code": code})
                 continue
             rows.append({column: MISSING for column in FINANCIAL_COLUMNS} | {"code": code})
+    log_step(f"financial_summary complete: rows={len(rows)} errors={len(errors)}")
     if source == "akshare" and errors:
         raise FinancialSourceError(errors, rows)
     return rows, errors
@@ -772,6 +801,22 @@ def verification_status(source: str) -> str:
     if source == "fixture":
         return "user_provided"
     return "verified"
+
+
+def price_performance_source_name(market_source: str) -> str:
+    if market_source == "fixture":
+        return "fixture price_performance"
+    if market_source == "tencent":
+        return "AkShare stock_zh_a_hist; fallback 腾讯前复权日 K 线"
+    return "AkShare stock_zh_a_hist"
+
+
+def spot_indicators_source_name(market_source: str) -> str:
+    if market_source == "fixture":
+        return "fixture spot indicators"
+    if market_source == "tencent":
+        return "腾讯行情 API fields 43/49"
+    return "AkShare stock_zh_a_spot_em"
 
 
 def write_source_manifest(
@@ -804,9 +849,7 @@ def write_source_manifest(
                 "file": "market_snapshot.csv",
                 "field_group": "price_performance",
                 "source_type": "public_market_data",
-                "source_name": source_name("fixture", "price_performance")
-                if market_source == "fixture"
-                else "AkShare stock_zh_a_hist",
+                "source_name": price_performance_source_name(market_source),
                 "data_time": as_of,
                 "period_or_basis": "前复权收盘价 5/20/60/120 个交易日收益率",
                 "verification_status": verification_status(market_source),
@@ -816,9 +859,7 @@ def write_source_manifest(
                 "file": "market_snapshot.csv",
                 "field_group": "spot_indicators",
                 "source_type": "public_market_data",
-                "source_name": "fixture spot indicators"
-                if market_source == "fixture"
-                else "AkShare stock_zh_a_spot_em",
+                "source_name": spot_indicators_source_name(market_source),
                 "data_time": as_of,
                 "period_or_basis": "量比和振幅实时快照",
                 "verification_status": verification_status(market_source),
@@ -867,9 +908,14 @@ def copy_peer_universe_if_needed(peer_universe: Path, output_dir: Path) -> None:
 def run_pipeline(args: argparse.Namespace) -> int:
     peer_universe = Path(args.peer_universe)
     output_dir = Path(args.output_dir)
+    log_step(
+        f"pipeline start: peer_universe={peer_universe} output_dir={output_dir} "
+        f"market_source={args.market_source} financial_source={args.financial_source}"
+    )
     output_dir.mkdir(parents=True, exist_ok=True)
 
     peers = read_peer_universe(peer_universe)
+    log_step(f"loaded peer universe: peers={len(peers)}")
     copy_peer_universe_if_needed(peer_universe, output_dir)
     market_rows, market_errors = fetch_market_snapshot(
         peers,
@@ -884,6 +930,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
     except FinancialSourceError as exc:
         financial_rows = exc.rows
         financial_errors = exc.errors
+        log_step(f"financial source raised with preserved rows: errors={len(financial_errors)}")
     except Exception as exc:
         if args.financial_source != "akshare":
             raise
@@ -901,15 +948,20 @@ def run_pipeline(args: argparse.Namespace) -> int:
             | {"code": normalize_a_share_code(peer["code"])}
             for peer in peers
         ]
+        log_step(f"financial source failed globally; degraded rows={len(financial_rows)} error={exc}")
 
+    log_step("writing market_snapshot.csv")
     write_csv(output_dir / "market_snapshot.csv", market_rows, MARKET_COLUMNS)
+    log_step("writing financial_summary.csv")
     write_csv(output_dir / "financial_summary.csv", financial_rows, FINANCIAL_COLUMNS)
+    log_step("writing source_manifest.json")
     write_source_manifest(
         output_dir,
         args.as_of,
         args.market_source,
         args.financial_source,
     )
+    log_step(f"writing fetch_errors.csv with {len(market_errors) + len(financial_errors)} error(s)")
     write_fetch_errors(output_dir, market_errors + financial_errors)
 
     print(f"wrote public data exports: {output_dir}")

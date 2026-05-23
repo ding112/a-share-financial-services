@@ -69,6 +69,11 @@ AUTO_OUTPUTS = [
     "auto_prepare_manifest.json",
 ]
 
+
+def log_step(message: str) -> None:
+    print(f"[a-share-auto-prepare] {message}", file=sys.stderr)
+
+
 FIXTURE_CANDIDATES = [
     ("300750.SZ", "宁德时代", "电池", "核心成分", 1840000000, 960000000000),
     ("002594.SZ", "比亚迪", "整车", "核心成分", 1560000000, 780000000000),
@@ -270,13 +275,18 @@ def load_akshare():
 
 def retry_call(func, *args, max_retries=3, delay=2, **kwargs):
     import time
+
+    label = getattr(func, "__name__", "akshare_call")
     for i in range(max_retries):
         try:
             return func(*args, **kwargs)
         except Exception as exc:
+            log_step(f"{label} attempt {i + 1}/{max_retries} failed: {exc}")
             if i == max_retries - 1:
                 raise exc
-            time.sleep(delay * (i + 1))
+            sleep_seconds = delay * (i + 1)
+            log_step(f"{label} retrying in {sleep_seconds}s")
+            time.sleep(sleep_seconds)
 
 
 def board_name(row: dict[str, Any]) -> str:
@@ -306,10 +316,12 @@ def fetch_akshare_candidates(theme: str) -> list[dict[str, Any]]:
     errors: list[str] = []
     best: tuple[int, str, str, Any] | None = None
     for source_name, list_func, constituents_func in board_specs:
+        log_step(f"loading board list from {source_name}")
         try:
             boards = dataframe_to_records(retry_call(list_func))
         except Exception as exc:
             errors.append(f"{source_name} list failed: {exc}")
+            log_step(f"{source_name} list failed: {exc}")
             continue
         for board in boards:
             name = board_name(board)
@@ -322,6 +334,7 @@ def fetch_akshare_candidates(theme: str) -> list[dict[str, Any]]:
         raise RuntimeError(f"无法从 AkShare 公开板块匹配主题 `{theme}`: {detail}")
 
     _, source_name, matched_board, constituents_func = best
+    log_step(f"matched theme `{theme}` to {source_name} board `{matched_board}`")
     try:
         records = dataframe_to_records(retry_call(constituents_func, symbol=matched_board))
     except Exception as exc:
@@ -475,6 +488,7 @@ def write_auto_prepare_manifest(
 
 
 def run_public_data_fetcher(args: argparse.Namespace, peer_path: Path, output_dir: Path) -> None:
+    log_step("running required fetcher: fetch_a_share_public_data.py")
     with tempfile.TemporaryDirectory() as tmp:
         peer_input = Path(tmp) / "peer_universe.csv"
         shutil.copyfile(peer_path, peer_input)
@@ -493,13 +507,17 @@ def run_public_data_fetcher(args: argparse.Namespace, peer_path: Path, output_di
             args.financial_source,
         ]
         result = subprocess.run(command, cwd=ROOT, check=False, capture_output=True, text=True)
+    if result.stderr.strip():
+        print(result.stderr.strip(), file=sys.stderr)
     if result.returncode != 0:
         raise RuntimeError(
             f"fetch_a_share_public_data.py exited {result.returncode}: {result.stderr.strip()}"
         )
+    log_step("finished required fetcher: fetch_a_share_public_data.py")
 
 
 def run_events_risks_fetcher(args: argparse.Namespace, peer_path: Path, output_dir: Path) -> None:
+    log_step("running optional fetcher: fetch_a_share_events_risks.py")
     with tempfile.TemporaryDirectory() as tmp:
         peer_input = Path(tmp) / "peer_universe.csv"
         shutil.copyfile(peer_path, peer_input)
@@ -519,12 +537,17 @@ def run_events_risks_fetcher(args: argparse.Namespace, peer_path: Path, output_d
             f"warning: fetch_a_share_events_risks.py exited {result.returncode}: {result.stderr.strip()}",
             file=sys.stderr,
         )
+        return
+    log_step("finished optional fetcher: fetch_a_share_events_risks.py")
 
 
 def _run_optional_fetcher(name: str, command: list[str]) -> None:
+    log_step(f"running optional fetcher: {name}")
     result = subprocess.run(command, cwd=ROOT, check=False, capture_output=True, text=True)
     if result.returncode != 0:
         print(f"warning: {name} exited {result.returncode}: {result.stderr.strip()}", file=sys.stderr)
+        return
+    log_step(f"finished optional fetcher: {name}")
 
 
 def run_market_context_fetcher(args: argparse.Namespace, output_dir: Path) -> None:
@@ -627,16 +650,24 @@ def main() -> int:
     if args.max_peers < 1:
         raise SystemExit("--max-peers must be positive")
     output_dir = Path(args.output_dir)
+    log_step(f"starting auto research-pack: theme={args.theme} output_dir={output_dir}")
     ensure_writable_output(output_dir, args.force)
 
+    log_step("loading candidate universe")
     candidates, source = load_candidates(args)
+    log_step(f"loaded {len(candidates)} candidate(s) from {source}")
     candidate_rows, peer_rows, selection = build_peer_universe(candidates, args.theme, args.max_peers)
     if not peer_rows:
         raise SystemExit("无法生成 peer_universe.csv：候选股票池为空")
+    log_step(
+        f"selected {selection['selected_count']} peer(s); "
+        f"filtered_risk={selection['filtered_risk_count']}"
+    )
 
     write_csv(output_dir / "candidate_peer_universe.csv", candidate_rows, CANDIDATE_COLUMNS)
     peer_path = output_dir / "peer_universe.csv"
     write_csv(peer_path, peer_rows, PEER_COLUMNS)
+    log_step("wrote candidate_peer_universe.csv and peer_universe.csv")
     run_public_data_fetcher(args, peer_path, output_dir)
     run_events_risks_fetcher(args, peer_path, output_dir)
     run_market_context_fetcher(args, output_dir)
@@ -646,6 +677,7 @@ def main() -> int:
     run_board_sector_fetcher(args, output_dir)
     run_fund_holdings_fetcher(args, peer_path, output_dir)
     run_index_valuation_fetcher(args, output_dir)
+    log_step("patching source manifest and writing auto prepare manifest")
     patch_source_manifest(output_dir, args, source)
     write_auto_prepare_manifest(output_dir / "auto_prepare_manifest.json", args, source, selection)
 

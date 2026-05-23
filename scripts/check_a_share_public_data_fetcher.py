@@ -186,6 +186,61 @@ def validate_public_data_fetcher() -> list[str]:
     if short_performance.get("return_20d") != "来源缺失":
         errors.append("calculate_price_performance should mark short 20d samples missing")
 
+    original_fetch_text = module.fetch_text
+    try:
+        def fake_tencent_quote(_url: str, _params: dict[str, str], encoding: str = "utf-8") -> str:
+            fields = [""] * 88
+            fields[3] = "100.00"
+            fields[30] = "20260521150000"
+            fields[32] = "1.23"
+            fields[35] = "100.00/1000/2000000"
+            fields[38] = "2.34"
+            fields[43] = "3.45"
+            fields[44] = "456.78"
+            fields[45] = "567.89"
+            fields[46] = "4.56"
+            fields[49] = "1.23"
+            fields[52] = "33.21"
+            return 'v_sz300750="' + "~".join(fields) + '";'
+
+        module.fetch_text = fake_tencent_quote
+        tencent_row = module.fetch_tencent_market_row("300750.SZ", "2026-05-21 15:00:00")
+        if tencent_row.get("volume_ratio") != "1.23":
+            errors.append("fetch_tencent_market_row should map Tencent field 49 to volume_ratio")
+        if tencent_row.get("amplitude") != "3.45":
+            errors.append("fetch_tencent_market_row should map Tencent field 43 to amplitude")
+    finally:
+        module.fetch_text = original_fetch_text
+
+    original_fetch_json = module.fetch_json
+    try:
+        def fake_tencent_kline(_url: str, params: dict[str, str]) -> dict[str, object]:
+            if params.get("param") != "sz300750,day,,,130,qfq":
+                errors.append("fetch_tencent_price_performance should request 130 qfq daily bars")
+            return {
+                "code": 0,
+                "data": {
+                    "sz300750": {
+                        "qfqday": [
+                            [f"2026-01-{index + 1:02d}", "0", str(100 + index), "0", "0", "0"]
+                            for index in range(121)
+                        ]
+                    }
+                },
+            }
+
+        module.fetch_json = fake_tencent_kline
+        if not hasattr(module, "fetch_tencent_price_performance"):
+            errors.append("fetch_a_share_public_data.py missing fetch_tencent_price_performance fallback")
+        else:
+            tencent_performance = module.fetch_tencent_price_performance("300750.SZ")
+            if tencent_performance.get("return_120d") != "120":
+                errors.append("fetch_tencent_price_performance should calculate 120d qfq fallback return")
+            if "腾讯前复权日 K 线" not in tencent_performance.get("return_basis", ""):
+                errors.append("fetch_tencent_price_performance should identify Tencent qfq basis")
+    finally:
+        module.fetch_json = original_fetch_json
+
     original_akshare_module = sys.modules.get("akshare")
     try:
         if hasattr(module, "AKSHARE_RETRY_DELAY_SECONDS"):
