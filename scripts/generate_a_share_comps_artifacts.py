@@ -21,6 +21,8 @@ MAIN_FIELDS = [
     "pe_ttm",
     "pb",
     "ps_ttm",
+    "return_5d",
+    "return_20d",
     "revenue",
     "net_profit",
     "roe",
@@ -79,6 +81,11 @@ MARKET_FIELDS = [
     "ps_ttm",
 ]
 
+PRICE_PERFORMANCE_FIELDS = [
+    "return_5d",
+    "return_20d",
+]
+
 FINANCIAL_FIELDS = [
     "revenue",
     "net_profit",
@@ -135,7 +142,10 @@ def read_source_manifest(pack_dir: Path) -> dict[str, dict[str, str]]:
     result: dict[str, dict[str, str]] = {}
     for item in files:
         if isinstance(item, dict) and isinstance(item.get("file"), str):
-            result[item["file"]] = {key: str(value) for key, value in item.items()}
+            key = item["file"]
+            if isinstance(item.get("field_group"), str):
+                key = f"{key}#{item['field_group']}"
+            result[key] = {field: str(value) for field, value in item.items()}
     return result
 
 
@@ -191,6 +201,8 @@ def build_comps_main(
             "pe_ttm": clean_value(market.get("pe_ttm")),
             "pb": clean_value(market.get("pb")),
             "ps_ttm": clean_value(market.get("ps_ttm")),
+            "return_5d": clean_value(market.get("return_5d")),
+            "return_20d": clean_value(market.get("return_20d")),
             "revenue": clean_value(financial.get("revenue")),
             "net_profit": clean_value(financial.get("net_profit")),
             "roe": clean_value(financial.get("roe")),
@@ -229,6 +241,8 @@ def build_source_notes(peers: list[dict[str, str]], manifest: dict[str, dict[str
         "pe_ttm": ("market_snapshot.csv", "缺少估值时不做 PE 排序"),
         "pb": ("market_snapshot.csv", "缺少估值时不做 PB 排序"),
         "ps_ttm": ("market_snapshot.csv", "缺少估值时不做 PS 排序"),
+        "return_5d": ("market_snapshot.csv#price_performance", "缺少短期表现时不展示 5 日收益率"),
+        "return_20d": ("market_snapshot.csv#price_performance", "缺少短期表现时不展示 20 日收益率"),
         "revenue": ("financial_summary.csv", "缺少财务摘要时不做财务质量排序"),
         "net_profit": ("financial_summary.csv", "亏损或缺失时不做 PE 排序"),
         "roe": ("financial_summary.csv", "缺少 ROE 时不做盈利质量排序"),
@@ -386,6 +400,17 @@ def build_data_gaps(
                         "missing_behavior": "不参与估值、流动性或市值排序",
                     }
                 )
+        for field in PRICE_PERFORMANCE_FIELDS:
+            if row.get(field) == MISSING:
+                gaps.append(
+                    {
+                        "code": row["code"],
+                        "field_name": field,
+                        "required_for": "display",
+                        "gap_reason": "missing value",
+                        "missing_behavior": "不展示短期表现，不参与估值或质量统计",
+                    }
+                )
         for field in FINANCIAL_FIELDS:
             if row.get(field) == MISSING:
                 gaps.append(
@@ -454,6 +479,7 @@ def write_summary(
             "",
             "## 对 idea generation 的交接",
             "- 只把有来源和统计样本支持的估值、流动性、盈利质量观察交给 idea generation。",
+            "- `return_5d` 和 `return_20d` 只作为短期表现展示口径，不进入估值或质量统计。",
             "- 亏损公司、极端估值和缺少来源的字段必须作为风险或待验证问题传递。",
         ]
     )

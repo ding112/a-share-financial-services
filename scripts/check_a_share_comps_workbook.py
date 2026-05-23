@@ -80,8 +80,9 @@ def validate_comps_workbook() -> list[str]:
         tmp_dir = Path(tmp)
         for pack_name, theme in FIXTURE_PACKS:
             pack_dir = ROOT / "fixtures/a-share-research-packs" / pack_name
-            comps_dir = tmp_dir / f"{pack_name}-comps"
-            workbook_path = tmp_dir / f"{pack_name}.xlsx"
+            topic_dir = tmp_dir / theme
+            comps_dir = topic_dir / "comps"
+            workbook_path = topic_dir / "workbook" / f"{theme}可比公司.xlsx"
 
             comps = subprocess.run(
                 [

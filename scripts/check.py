@@ -32,6 +32,8 @@ from check_a_share_research_note import validate_research_note  # noqa: E402
 from check_a_share_research_pack_fixtures import validate_fixtures  # noqa: E402
 from check_a_share_research_pack_prep import validate_prep_script  # noqa: E402
 from check_a_share_public_data_fetcher import validate_public_data_fetcher  # noqa: E402
+from check_a_share_auto_prepare import validate_auto_prepare  # noqa: E402
+from check_a_share_auxiliary_fetchers import validate_auxiliary_fetchers  # noqa: E402
 
 try:
     import yaml
@@ -142,7 +144,7 @@ for bundled in sorted(PLUGINS.glob("agent-plugins/*/skills/*")):
     if not src:
         err(f"bundled-skill: {rel(bundled)}: no vertical-plugins source named '{bundled.name}'")
         continue
-    cmp = filecmp.dircmp(src, bundled)
+    cmp = filecmp.dircmp(src, bundled, ignore=[".DS_Store"])
     if cmp.diff_files or cmp.left_only or cmp.right_only:
         err(
             f"bundled-skill: {rel(bundled)}: drifted from {rel(src)} "
@@ -243,6 +245,12 @@ for prep_error in validate_prep_script():
 
 for public_data_error in validate_public_data_fetcher():
     err(public_data_error)
+
+for auto_prepare_error in validate_auto_prepare():
+    err(auto_prepare_error)
+
+for auxiliary_fetcher_error in validate_auxiliary_fetchers():
+    err(auxiliary_fetcher_error)
 
 for generator_error in validate_comps_generator():
     err(generator_error)

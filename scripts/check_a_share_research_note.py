@@ -26,6 +26,7 @@ REQUIRED_TOKENS = [
     "def read_text_file",
     "def safe_filename",
     "def load_research_inputs",
+    "def short_performance_summary",
     "def build_note",
     "def build_slide_outline",
     "def write_manifest",
@@ -89,9 +90,10 @@ def validate_research_note() -> list[str]:
         tmp_dir = Path(tmp)
         for pack_name, theme, angle in FIXTURE_PACKS:
             pack_dir = ROOT / "fixtures/a-share-research-packs" / pack_name
-            comps_dir = tmp_dir / f"{pack_name}-comps"
-            handoff_dir = tmp_dir / f"{pack_name}-handoff"
-            note_dir = tmp_dir / f"{pack_name}-note"
+            topic_dir = tmp_dir / theme
+            comps_dir = topic_dir / "comps"
+            handoff_dir = topic_dir / "handoff"
+            note_dir = topic_dir / "note"
 
             comps = subprocess.run(
                 [
@@ -178,6 +180,12 @@ def validate_research_note() -> list[str]:
                         errors.append(f"{note_path.name} missing section {section}")
                 if "来源缺失" not in note_text and "待验证" not in note_text:
                     errors.append(f"{note_path.name} must disclose missing or verification status")
+                if "短期表现" not in note_text:
+                    errors.append(f"{note_path.name} should disclose short-term performance basis")
+                forbidden = ["收益承诺", "预计收益", "目标收益"]
+                for phrase in forbidden:
+                    if phrase in note_text:
+                        errors.append(f"{note_path.name} should not include performance promise phrase {phrase}")
 
             if slide_path.is_file():
                 slide_text = slide_path.read_text(encoding="utf-8")

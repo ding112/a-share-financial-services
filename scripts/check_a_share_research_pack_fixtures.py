@@ -46,6 +46,9 @@ MARKET_COLUMNS = [
     "pe_ttm",
     "pb",
     "ps_ttm",
+    "return_5d",
+    "return_20d",
+    "return_basis",
     "snapshot_time",
     "basis",
 ]
