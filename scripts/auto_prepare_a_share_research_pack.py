@@ -15,6 +15,14 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 FETCHER = ROOT / "scripts/fetch_a_share_public_data.py"
+EVENTS_FETCHER = ROOT / "scripts/fetch_a_share_events_risks.py"
+MARKET_CONTEXT_FETCHER = ROOT / "scripts/fetch_a_share_market_context.py"
+MACRO_CONTEXT_FETCHER = ROOT / "scripts/fetch_a_share_macro_context.py"
+COMPANY_DETAILS_FETCHER = ROOT / "scripts/fetch_a_share_company_details.py"
+NORTHBOUND_MARGIN_FETCHER = ROOT / "scripts/fetch_a_share_northbound_margin.py"
+BOARD_SECTOR_FETCHER = ROOT / "scripts/fetch_a_share_board_sector.py"
+FUND_HOLDINGS_FETCHER = ROOT / "scripts/fetch_a_share_fund_holdings.py"
+INDEX_VALUATION_FETCHER = ROOT / "scripts/fetch_a_share_index_valuation.py"
 
 PEER_COLUMNS = [
     "code",
@@ -40,6 +48,22 @@ AUTO_OUTPUTS = [
     "peer_universe.csv",
     "market_snapshot.csv",
     "financial_summary.csv",
+    "events_and_risks.md",
+    "market_context_fund_flow.csv",
+    "market_context_board_changes.csv",
+    "market_context_limit_up.csv",
+    "market_context_stock_fund_flow.csv",
+    "macro_context.csv",
+    "company_details.csv",
+    "northbound_flow.csv",
+    "northbound_holdings.csv",
+    "margin_trading.csv",
+    "board_sector_context.csv",
+    "fund_heavy_stocks.csv",
+    "etf_list.csv",
+    "index_valuation.csv",
+    "market_pe_pb.csv",
+    "index_spot.csv",
     "source_manifest.json",
     "fetch_errors.csv",
     "auto_prepare_manifest.json",
@@ -464,6 +488,83 @@ def run_public_data_fetcher(args: argparse.Namespace, peer_path: Path, output_di
         )
 
 
+def run_events_risks_fetcher(args: argparse.Namespace, peer_path: Path, output_dir: Path) -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        peer_input = Path(tmp) / "peer_universe.csv"
+        shutil.copyfile(peer_path, peer_input)
+        command = [
+            sys.executable,
+            str(EVENTS_FETCHER),
+            "--peer-universe",
+            str(peer_input),
+            "--output-dir",
+            str(output_dir),
+            "--as-of",
+            args.as_of,
+        ]
+        result = subprocess.run(command, cwd=ROOT, check=False, capture_output=True, text=True)
+    if result.returncode != 0:
+        print(
+            f"warning: fetch_a_share_events_risks.py exited {result.returncode}: {result.stderr.strip()}",
+            file=sys.stderr,
+        )
+
+
+def _run_optional_fetcher(name: str, command: list[str]) -> None:
+    result = subprocess.run(command, cwd=ROOT, check=False, capture_output=True, text=True)
+    if result.returncode != 0:
+        print(f"warning: {name} exited {result.returncode}: {result.stderr.strip()}", file=sys.stderr)
+
+
+def run_market_context_fetcher(args: argparse.Namespace, output_dir: Path) -> None:
+    _run_optional_fetcher(
+        "fetch_a_share_market_context.py",
+        [sys.executable, str(MARKET_CONTEXT_FETCHER), "--output-dir", str(output_dir), "--as-of", args.as_of],
+    )
+
+
+def run_macro_context_fetcher(args: argparse.Namespace, output_dir: Path) -> None:
+    _run_optional_fetcher(
+        "fetch_a_share_macro_context.py",
+        [sys.executable, str(MACRO_CONTEXT_FETCHER), "--output-dir", str(output_dir), "--as-of", args.as_of],
+    )
+
+
+def run_company_details_fetcher(args: argparse.Namespace, peer_path: Path, output_dir: Path) -> None:
+    _run_optional_fetcher(
+        "fetch_a_share_company_details.py",
+        [sys.executable, str(COMPANY_DETAILS_FETCHER), "--peer-universe", str(peer_path), "--output-dir", str(output_dir), "--as-of", args.as_of],
+    )
+
+
+def run_northbound_margin_fetcher(args: argparse.Namespace, output_dir: Path) -> None:
+    _run_optional_fetcher(
+        "fetch_a_share_northbound_margin.py",
+        [sys.executable, str(NORTHBOUND_MARGIN_FETCHER), "--output-dir", str(output_dir), "--as-of", args.as_of],
+    )
+
+
+def run_board_sector_fetcher(args: argparse.Namespace, output_dir: Path) -> None:
+    _run_optional_fetcher(
+        "fetch_a_share_board_sector.py",
+        [sys.executable, str(BOARD_SECTOR_FETCHER), "--output-dir", str(output_dir), "--as-of", args.as_of],
+    )
+
+
+def run_fund_holdings_fetcher(args: argparse.Namespace, peer_path: Path, output_dir: Path) -> None:
+    _run_optional_fetcher(
+        "fetch_a_share_fund_holdings.py",
+        [sys.executable, str(FUND_HOLDINGS_FETCHER), "--peer-universe", str(peer_path), "--output-dir", str(output_dir), "--as-of", args.as_of],
+    )
+
+
+def run_index_valuation_fetcher(args: argparse.Namespace, output_dir: Path) -> None:
+    _run_optional_fetcher(
+        "fetch_a_share_index_valuation.py",
+        [sys.executable, str(INDEX_VALUATION_FETCHER), "--output-dir", str(output_dir), "--as-of", args.as_of],
+    )
+
+
 def patch_source_manifest(
     output_dir: Path,
     args: argparse.Namespace,
@@ -526,6 +627,14 @@ def main() -> int:
     peer_path = output_dir / "peer_universe.csv"
     write_csv(peer_path, peer_rows, PEER_COLUMNS)
     run_public_data_fetcher(args, peer_path, output_dir)
+    run_events_risks_fetcher(args, peer_path, output_dir)
+    run_market_context_fetcher(args, output_dir)
+    run_macro_context_fetcher(args, output_dir)
+    run_company_details_fetcher(args, peer_path, output_dir)
+    run_northbound_margin_fetcher(args, output_dir)
+    run_board_sector_fetcher(args, output_dir)
+    run_fund_holdings_fetcher(args, peer_path, output_dir)
+    run_index_valuation_fetcher(args, output_dir)
     patch_source_manifest(output_dir, args, source)
     write_auto_prepare_manifest(output_dir / "auto_prepare_manifest.json", args, source, selection)
 

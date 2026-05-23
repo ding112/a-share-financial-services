@@ -33,6 +33,7 @@ from check_a_share_research_pack_fixtures import validate_fixtures  # noqa: E402
 from check_a_share_research_pack_prep import validate_prep_script  # noqa: E402
 from check_a_share_public_data_fetcher import validate_public_data_fetcher  # noqa: E402
 from check_a_share_auto_prepare import validate_auto_prepare  # noqa: E402
+from check_a_share_auxiliary_fetchers import validate_auxiliary_fetchers  # noqa: E402
 
 try:
     import yaml
@@ -247,6 +248,9 @@ for public_data_error in validate_public_data_fetcher():
 
 for auto_prepare_error in validate_auto_prepare():
     err(auto_prepare_error)
+
+for auxiliary_fetcher_error in validate_auxiliary_fetchers():
+    err(auxiliary_fetcher_error)
 
 for generator_error in validate_comps_generator():
     err(generator_error)

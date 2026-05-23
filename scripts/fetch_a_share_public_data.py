@@ -24,6 +24,8 @@ MARKET_COLUMNS = [
     "pct_change",
     "amount",
     "turnover_rate",
+    "volume_ratio",
+    "amplitude",
     "market_cap",
     "float_market_cap",
     "pe_ttm",
@@ -31,6 +33,8 @@ MARKET_COLUMNS = [
     "ps_ttm",
     "return_5d",
     "return_20d",
+    "return_60d",
+    "return_120d",
     "return_basis",
     "snapshot_time",
     "basis",
@@ -213,20 +217,23 @@ def calculate_price_performance(price_rows: list[dict[str, Any]]) -> dict[str, s
         return {
             "return_5d": MISSING,
             "return_20d": MISSING,
+            "return_60d": MISSING,
+            "return_120d": MISSING,
             "return_basis": MISSING,
         }
 
     latest_date, latest_close = closes[-1]
-    result = {
+    result: dict[str, str] = {
         "return_5d": MISSING,
         "return_20d": MISSING,
+        "return_60d": MISSING,
+        "return_120d": MISSING,
         "return_basis": MISSING,
     }
-    if len(closes) >= 6 and closes[-6][1] != 0:
-        result["return_5d"] = format_percent((latest_close / closes[-6][1] - 1) * 100)
-    if len(closes) >= 21 and closes[-21][1] != 0:
-        result["return_20d"] = format_percent((latest_close / closes[-21][1] - 1) * 100)
-    if result["return_5d"] != MISSING or result["return_20d"] != MISSING:
+    for label, offset in [("return_5d", 6), ("return_20d", 21), ("return_60d", 61), ("return_120d", 121)]:
+        if len(closes) >= offset and closes[-offset][1] != 0:
+            result[label] = format_percent((latest_close / closes[-offset][1] - 1) * 100)
+    if any(result[k] != MISSING for k in ("return_5d", "return_20d", "return_60d", "return_120d")):
         result["return_basis"] = f"AkShare 前复权收盘价，截至 {latest_date}"
     return result
 
@@ -236,7 +243,7 @@ def akshare_date_window(as_of: str) -> tuple[str, str]:
         end_date = dt.date.fromisoformat(as_of[:10])
     except ValueError:
         end_date = dt.date.today()
-    start_date = end_date - dt.timedelta(days=120)
+    start_date = end_date - dt.timedelta(days=200)
     return start_date.strftime("%Y%m%d"), end_date.strftime("%Y%m%d")
 
 
@@ -253,6 +260,40 @@ def fetch_akshare_price_performance(code: str, as_of: str) -> dict[str, str]:
         adjust="qfq",
     )
     return calculate_price_performance(frame.to_dict("records"))
+
+
+_AKSHARE_SPOT_CACHE: dict[str, dict[str, str]] | None = None
+
+
+def _load_akshare_spot_cache() -> dict[str, dict[str, str]]:
+    global _AKSHARE_SPOT_CACHE
+    if _AKSHARE_SPOT_CACHE is not None:
+        return _AKSHARE_SPOT_CACHE
+    import akshare as ak  # type: ignore[import-not-found]
+
+    frame = ak.stock_zh_a_spot_em()
+    cache: dict[str, dict[str, str]] = {}
+    for _, row in frame.iterrows():
+        code_raw = str(row.get("代码", ""))
+        if not code_raw:
+            continue
+        normalized = normalize_a_share_code(code_raw)
+        cache[normalized] = {
+            "volume_ratio": clean_value(row.get("量比")),
+            "amplitude": clean_value(row.get("振幅")),
+        }
+    _AKSHARE_SPOT_CACHE = cache
+    return cache
+
+
+def fetch_akshare_spot_fields(code: str) -> dict[str, str]:
+    cache = _load_akshare_spot_cache()
+    normalized = normalize_a_share_code(code)
+    entry = cache.get(normalized, {})
+    return {
+        "volume_ratio": entry.get("volume_ratio", MISSING),
+        "amplitude": entry.get("amplitude", MISSING),
+    }
 
 
 def fetch_eastmoney_market_row(code: str, as_of: str) -> dict[str, str]:
@@ -273,6 +314,8 @@ def fetch_eastmoney_market_row(code: str, as_of: str) -> dict[str, str]:
         "pct_change": clean_value(payload.get("f170")),
         "amount": clean_value(payload.get("f48")),
         "turnover_rate": clean_value(payload.get("f168")),
+        "volume_ratio": MISSING,
+        "amplitude": MISSING,
         "market_cap": clean_value(payload.get("f116")),
         "float_market_cap": clean_value(payload.get("f117")),
         "pe_ttm": clean_value(payload.get("f162") or payload.get("f167")),
@@ -280,6 +323,8 @@ def fetch_eastmoney_market_row(code: str, as_of: str) -> dict[str, str]:
         "ps_ttm": MISSING,
         "return_5d": MISSING,
         "return_20d": MISSING,
+        "return_60d": MISSING,
+        "return_120d": MISSING,
         "return_basis": MISSING,
         "snapshot_time": as_of,
         "basis": "东方财富行情快照",
@@ -309,6 +354,8 @@ def fetch_tencent_market_row(code: str, as_of: str) -> dict[str, str]:
         "pct_change": clean_value(fields[32]),
         "amount": amount,
         "turnover_rate": clean_value(fields[38]),
+        "volume_ratio": MISSING,
+        "amplitude": MISSING,
         "market_cap": yuan_from_yi(fields[45]),
         "float_market_cap": yuan_from_yi(fields[44]),
         "pe_ttm": clean_value(fields[52]),
@@ -316,6 +363,8 @@ def fetch_tencent_market_row(code: str, as_of: str) -> dict[str, str]:
         "ps_ttm": MISSING,
         "return_5d": MISSING,
         "return_20d": MISSING,
+        "return_60d": MISSING,
+        "return_120d": MISSING,
         "return_basis": MISSING,
         "snapshot_time": format_tencent_time(fields[30]) if fields[30] else as_of,
         "basis": "腾讯行情 API 快照",
@@ -331,6 +380,8 @@ def fixture_market_row(code: str, as_of: str) -> dict[str, str]:
         "pct_change": f"{numeric_tail / 100:.2f}",
         "amount": str(100000000 + numeric_tail * 10000),
         "turnover_rate": f"{1 + numeric_tail / 100:.2f}",
+        "volume_ratio": f"{1 + numeric_tail / 100:.2f}",
+        "amplitude": f"{numeric_tail / 10:.2f}",
         "market_cap": str(10000000000 + numeric_tail * 1000000),
         "float_market_cap": str(8000000000 + numeric_tail * 1000000),
         "pe_ttm": f"{20 + numeric_tail / 10:.2f}",
@@ -338,6 +389,8 @@ def fixture_market_row(code: str, as_of: str) -> dict[str, str]:
         "ps_ttm": f"{4 + numeric_tail / 100:.2f}",
         "return_5d": format_percent(numeric_tail / 10),
         "return_20d": format_percent(numeric_tail / 4),
+        "return_60d": format_percent(numeric_tail / 2),
+        "return_120d": format_percent(numeric_tail),
         "return_basis": "fixture AkShare 前复权收盘价短期收益率",
         "snapshot_time": as_of,
         "basis": "fixture public market snapshot",
@@ -351,6 +404,18 @@ def fetch_market_snapshot(
 ) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
     rows: list[dict[str, str]] = []
     errors: list[dict[str, str]] = []
+
+    # Pre-load AkShare spot cache for volume_ratio and amplitude (once)
+    spot_cache_loaded = False
+    if source != "fixture":
+        try:
+            _load_akshare_spot_cache()
+            spot_cache_loaded = True
+        except Exception as exc:
+            errors.append(
+                {"code": "*", "source": "akshare", "stage": "spot_cache", "error": str(exc)}
+            )
+
     for peer in peers:
         code = normalize_a_share_code(peer["code"])
         try:
@@ -369,6 +434,8 @@ def fetch_market_snapshot(
                             "error": str(exc),
                         }
                     )
+                if spot_cache_loaded:
+                    row.update(fetch_akshare_spot_fields(code))
                 rows.append(row)
             else:
                 row = fetch_eastmoney_market_row(code, as_of)
@@ -383,6 +450,8 @@ def fetch_market_snapshot(
                             "error": str(exc),
                         }
                     )
+                if spot_cache_loaded:
+                    row.update(fetch_akshare_spot_fields(code))
                 rows.append(row)
         except Exception as exc:
             errors.append(
@@ -400,6 +469,8 @@ def fetch_market_snapshot(
                     "pct_change": MISSING,
                     "amount": MISSING,
                     "turnover_rate": MISSING,
+                    "volume_ratio": MISSING,
+                    "amplitude": MISSING,
                     "market_cap": MISSING,
                     "float_market_cap": MISSING,
                     "pe_ttm": MISSING,
@@ -407,6 +478,8 @@ def fetch_market_snapshot(
                     "ps_ttm": MISSING,
                     "return_5d": MISSING,
                     "return_20d": MISSING,
+                    "return_60d": MISSING,
+                    "return_120d": MISSING,
                     "return_basis": MISSING,
                     "snapshot_time": as_of,
                     "basis": "抓取失败，字段降级为来源缺失",
@@ -655,9 +728,21 @@ def write_source_manifest(
                 if market_source == "fixture"
                 else "AkShare stock_zh_a_hist",
                 "data_time": as_of,
-                "period_or_basis": "前复权收盘价 5/20 个交易日收益率",
+                "period_or_basis": "前复权收盘价 5/20/60/120 个交易日收益率",
                 "verification_status": verification_status(market_source),
                 "missing_behavior": "缺失时短期收益率字段写来源缺失，不得写成未来收益判断",
+            },
+            {
+                "file": "market_snapshot.csv",
+                "field_group": "spot_indicators",
+                "source_type": "public_market_data",
+                "source_name": "fixture spot indicators"
+                if market_source == "fixture"
+                else "AkShare stock_zh_a_spot_em",
+                "data_time": as_of,
+                "period_or_basis": "量比和振幅实时快照",
+                "verification_status": verification_status(market_source),
+                "missing_behavior": "缺失时量比和振幅字段写来源缺失，不得自行计算",
             },
             {
                 "file": "financial_summary.csv",

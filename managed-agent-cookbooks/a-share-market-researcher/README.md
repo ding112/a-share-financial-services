@@ -43,14 +43,27 @@ period, and unit.
 公开数据抓取器是 `scripts/fetch_a_share_public_data.py`。它可以从本地
 `peer_universe.csv` 生成 `market_snapshot.csv`、`financial_summary.csv`、
 `source_manifest.json` 和 `fetch_errors.csv`。`market_snapshot.csv` 包含
-AkShare 前复权收盘价计算的 `return_5d`、`return_20d` 和 `return_basis`；
-这些字段只用于短期历史表现展示，不参与估值或质量统计。对应 manifest
-条目使用 `file: "market_snapshot.csv"` 和 `field_group: "price_performance"`。
+AkShare 前复权收盘价计算的 `return_5d`、`return_20d`、`return_60d`、`return_120d`
+和 `return_basis`，以及 AkShare `stock_zh_a_spot_em` 提供的 `volume_ratio`
+和 `amplitude`。这些字段只用于短期历史表现展示，不参与估值或质量统计。
+对应 manifest 条目使用 `file: "market_snapshot.csv"` 和 `field_group: "price_performance"`。
 一键入口是
 `scripts/auto_prepare_a_share_research_pack.py`；当没有种子文件时，它使用
 AkShare 公开概念或行业板块生成 `candidate_peer_universe.csv` 和
 `peer_universe.csv`，再调用公开数据抓取器补行情和财务摘要。自动生成的概念
 或板块成分只能作为 `待验证` 线索，不能作为已验证业务暴露。
+
+辅助抓取器自动生成以下文件：
+
+| 脚本 | 输出文件 | 数据范围 |
+|---|---|---|
+| `fetch_a_share_events_risks.py` | `events_and_risks.md` | ST、停复牌、限售解禁、股权质押 |
+| `fetch_a_share_market_context.py` | `market_context_fund_flow.csv`, `market_context_board_changes.csv`, `market_context_limit_up.csv` | 行业资金流、板块异动、涨停池 |
+| `fetch_a_share_macro_context.py` | `macro_context.csv` | GDP、CPI、PPI、PMI |
+| `fetch_a_share_company_details.py` | `company_details.csv` | 主营构成、公司概况、股本结构 |
+| `fetch_a_share_northbound_margin.py` | `northbound_flow.csv`, `northbound_holdings.csv`, `margin_trading.csv` | 北向资金、融资融券 |
+| `fetch_a_share_board_sector.py` | `board_sector_context.csv` | 概念板块和行业板块实时行情 |
+| `fetch_a_share_fund_holdings.py` | `fund_heavy_stocks.csv`, `etf_list.csv` | 基金重仓股、ETF 行情 |
 
 默认财务源仍是 Eastmoney。显式使用 `--financial-source akshare` 时，
 AkShare 依赖缺失、接口失败或字段无法解析会让准备命令返回非 0；调用方
@@ -63,12 +76,18 @@ Guide-backed free sources can fill these gaps:
 | Tencent quote API | Latest price, open, previous close, high, low, volume, amount, turnover, dynamic PE, total market cap, and float market cap. | `public_market_data` |
 | AkShare `stock_zh_a_hist(..., adjust="qfq")` | 5-day and 20-day historical returns from forward-adjusted closing prices. | `public_market_data` |
 | AkShare `stock_financial_abstract` | Latest-period revenue, profit, non-recurring profit, growth rates, gross margin, net margin, ROE, liability ratio, and operating cash flow when the source exposes those fields. | `public_market_data` |
+| AkShare `stock_zh_a_spot_em` | Volume ratio and amplitude from market-wide spot data. | `public_market_data` |
+| AkShare event interfaces | ST/退市, suspension, restricted release, pledge ratio. | `public_market_data` |
+| AkShare board/sector interfaces | Concept and industry board spot data, board changes, fund flow ranking, limit-up pool. | `public_market_data` |
+| AkShare macro interfaces | GDP, CPI, PPI, PMI. | `official_statistics` |
+| AkShare company detail interfaces | Main business composition, company profile, share structure. | `official_disclosure` / `public_market_data` |
+| AkShare northbound/margin interfaces | Northbound capital flow, holdings, margin trading. | `public_market_data` |
+| AkShare fund interfaces | Fund heavy holdings, ETF spot data. | `public_market_data` |
 | Eastmoney data center | Income statement, balance sheet, and cash-flow statement fields. | `public_market_data` |
 | Calculated fields | Shares, CAGR, EV, EV/Revenue, and EV/EBITDA when every input is sourced. | `public_market_data` with formula in the basis note |
 
 The same guide does not fill industry size, industry growth, penetration,
-orders, capacity, customers, technology route, risk-event announcements, capital
-flow, margin financing, or northbound holdings. Keep those fields as
+orders, capacity, customers, or technology route. Keep those fields as
 `missing_source` unless another reliable source is provided.
 
 ## Research-pack input contract
@@ -84,9 +103,21 @@ The recommended package contains these files:
 |---|---|---|
 | `source_manifest.json` | Yes | Declares each input file's source type, source name, data time, basis, verification status, and missing-data behavior. |
 | `peer_universe.csv` | Yes | Defines the 8 to 15 candidate A-share companies, exchange, board, peer group, theme role, and exposure source reference. |
-| `market_snapshot.csv` | No | Provides timestamped price, valuation, market-cap, liquidity, and short-term historical performance fields. |
+| `market_snapshot.csv` | No | Provides timestamped price, valuation, market-cap, liquidity, volume ratio, amplitude, and short-term historical performance fields (5/20/60/120d returns). |
 | `financial_summary.csv` | No | Provides latest-period revenue, profit, margin, ROE, leverage, and cash-flow fields. |
 | `company_exposure.md` | No | Stores business exposure, order, capacity, customer, product, and technology-route evidence grouped by company code. |
+| `events_and_risks.md` | No | Stores ST, suspension, restricted release, and pledge risk data grouped by company code. |
+| `market_context_fund_flow.csv` | No | Industry fund flow ranking and main capital net inflow. |
+| `market_context_board_changes.csv` | No | Board sector change alerts and leading stocks. |
+| `market_context_limit_up.csv` | No | Limit-up stock pool and reasons. |
+| `macro_context.csv` | No | GDP, CPI, PPI, PMI macro indicators. |
+| `company_details.csv` | No | Main business composition, company profile, share structure. |
+| `northbound_flow.csv` | No | Northbound capital net flow trend. |
+| `northbound_holdings.csv` | No | Northbound stock holdings. |
+| `margin_trading.csv` | No | Margin trading balance and buy amount. |
+| `board_sector_context.csv` | No | Concept and industry board spot data. |
+| `fund_heavy_stocks.csv` | No | Fund heavy stock holdings crossing with peers. |
+| `etf_list.csv` | No | ETF spot data. |
 | `events_and_risks.md` | No | Stores catalysts, regulatory events, reductions, unlocks, ST, suspension, and failure-condition evidence grouped by company code. |
 | `candidate_peer_universe.csv` | No | Stores the full auto-generated candidate pool, public board source, selection metric, and verification status. |
 | `auto_prepare_manifest.json` | No | Records theme, inputs, outputs, selected universe count, selection rule, and warnings for auditability. |

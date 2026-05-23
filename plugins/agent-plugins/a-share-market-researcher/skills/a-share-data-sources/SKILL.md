@@ -51,6 +51,13 @@ description: 为 A 股研究字段映射免费或公开数据源，分类来源�
 | 腾讯行情 API | 名称、最新价、昨收、今开、最高、最低、涨跌幅、成交量、成交额、换手率、动态 PE、流通市值、总市值 | `public_market_data` | 访问时间或行情时间戳，盘中快照 |
 | 同花顺 AKShare 财务摘要 | 近 5 年营收、净利润、扣非净利润、营收增速、净利增速、EPS、BPS、经营现金流/股、毛利率、净利率、ROE、资产负债率 | `public_market_data` | 报告期，年报或报告期口径 |
 | 东方财富数据中心 | 利润表、资产负债表、现金流量表字段，包括营业收入、营业成本、归母净利润、总资产、总负债、货币资金、应收账款、存货、经营现金流、资本开支、折旧摊销 | `public_market_data` | 报告期，合并报表，金额单位 |
+| AkShare 行情快照 | 量比、振幅（来自 `stock_zh_a_spot_em`） | `public_market_data` | 实时快照，访问时间 |
+| AkShare 事件类数据 | ST/退市、停复牌、限售解禁、股权质押 | `public_market_data` | 当日检查 |
+| AkShare 板块行情 | 概念板块、行业板块实时行情、板块异动、资金流排名 | `public_market_data` | 当日快照 |
+| AkShare 宏观数据 | GDP、CPI、PPI、PMI、固定资产投资、社会消费品零售总额 | `official_statistics` | 最新可用期 |
+| AkShare 公司详情 | 主营构成、公司概况、股本结构 | `official_disclosure` / `public_market_data` | 巨潮来源优先 |
+| AkShare 北向/融资融券 | 北向资金净流入、北向持股、融资融券余额 | `public_market_data` | 最新可用期 |
+| AkShare 基金持仓 | 基金重仓股、ETF 行情 | `public_market_data` | 最新报告期 |
 
 ## AkShare 接口查询目录
 
@@ -66,19 +73,30 @@ AkShare 股票、指数、宏观、基金、债券和期货接口，只记录数
 和国家统计口径的数据可以作为更高等级来源，但仍必须保留访问时间、报告期、
 公告标题、指数代码或统计口径。
 
-## 第一版公开数据抓取器
+## 公开数据抓取器
 
-`scripts/fetch_a_share_public_data.py` 是第一版本地公开数据抓取器。它只负责
-把股票池中的 A 股代码转换为两个 research-pack 可消费文件：
+`scripts/fetch_a_share_public_data.py` 是本地公开数据抓取器。它负责
+把股票池中的 A 股代码转换为 research-pack 可消费文件：
 
-- `market_snapshot.csv`：行情、成交额、换手率、市值、公开估值和
-  AkShare 前复权短期表现快照。
+- `market_snapshot.csv`：行情、成交额、换手率、量比、振幅、市值、公开估值和
+  AkShare 前复权短期表现快照（含 5/20/60/120 日收益率）。
 - `financial_summary.csv`：公开财务摘要、报告期、盈利质量和资产负债字段。
 
 该抓取器不覆盖行业规模、行业增速、渗透率、政策原文、公司公告、业务暴露、
-订单、产能、客户、技术路线、风险事件、东方财富三大报表明细、融资融券
-或北向资金。短期表现只使用 AkShare `stock_zh_a_hist(..., adjust="qfq")`
-前复权收盘价计算 5 日和 20 日收益率，缺失时写 `来源缺失`，不得补数。
+订单、产能、客户、技术路线。短期表现只使用 AkShare `stock_zh_a_hist(..., adjust="qfq")`
+前复权收盘价计算 5/20/60/120 日收益率，缺失时写 `来源缺失`，不得补数。
+
+辅助抓取器：
+
+| 脚本 | 输出文件 | 数据范围 |
+|---|---|---|
+| `fetch_a_share_events_risks.py` | `events_and_risks.md` | ST、停复牌、限售解禁、股权质押 |
+| `fetch_a_share_market_context.py` | `market_context_fund_flow.csv`, `market_context_board_changes.csv`, `market_context_limit_up.csv` | 行业资金流、板块异动、涨停池 |
+| `fetch_a_share_macro_context.py` | `macro_context.csv` | GDP、CPI、PPI、PMI |
+| `fetch_a_share_company_details.py` | `company_details.csv` | 主营构成、公司概况、股本结构 |
+| `fetch_a_share_northbound_margin.py` | `northbound_flow.csv`, `northbound_holdings.csv`, `margin_trading.csv` | 北向资金、融资融券 |
+| `fetch_a_share_board_sector.py` | `board_sector_context.csv` | 概念板块和行业板块实时行情 |
+| `fetch_a_share_fund_holdings.py` | `fund_heavy_stocks.csv`, `etf_list.csv` | 基金重仓股、ETF 行情 |
 
 抓取器输出的 `source_manifest.json` 必须保留来源类型、来源名称、访问时间、
 报告期或口径、验证状态和缺失行为。下游技能不得把公开行情或公开财务摘要
@@ -119,8 +137,24 @@ data-prep worker 使用的一键准备入口。它负责在 `research-pack/` 缺
 |---|---|
 | `candidate_peer_universe.csv` | 保存公开板块或用户股票池的完整候选，含候选来源、匹配板块和筛选指标。 |
 | `peer_universe.csv` | 保存进入 comps 的 8 到 15 只公司；自动生成时 `theme_role` 默认为 `待验证`。 |
-| `market_snapshot.csv` | 由公开行情来源生成的行情、估值、市值、流动性和短期表现快照。 |
+| `market_snapshot.csv` | 由公开行情来源生成的行情、估值、市值、流动性、量比、振幅和短期表现快照（含 60/120 日收益率）。 |
 | `financial_summary.csv` | 由 Eastmoney 或 AkShare 公开财务摘要生成的最新一期报告期财务字段。 |
+| `events_and_risks.md` | 由 AkShare 事件类接口生成的 ST、停复牌、限售解禁和质押风险数据。 |
+| `market_context_fund_flow.csv` | 行业资金流排名和主力净流入数据。 |
+| `market_context_board_changes.csv` | 板块异动和领涨股数据。 |
+| `market_context_limit_up.csv` | 涨停股票池和涨停原因。 |
+| `macro_context.csv` | GDP、CPI、PPI、PMI 宏观指标。 |
+| `company_details.csv` | 主营构成、公司概况和股本结构。 |
+| `northbound_flow.csv` | 北向资金净流入趋势。 |
+| `northbound_holdings.csv` | 北向持股数量和比例。 |
+| `margin_trading.csv` | 融资融券余额和买入额。 |
+| `board_sector_context.csv` | 概念板块和行业板块实时行情。 |
+| `fund_heavy_stocks.csv` | 基金重仓股与 peer 交叉数据。 |
+| `etf_list.csv` | ETF 行情列表。 |
+| `market_context_stock_fund_flow.csv` | 个股资金流排名和主力净流入数据。 |
+| `index_valuation.csv` | 指数估值历史（PE、PB、股息率）。 |
+| `market_pe_pb.csv` | A 股整体 PE/PB。 |
+| `index_spot.csv` | 主要指数实时行情。 |
 | `source_manifest.json` | 声明每个文件的来源类型、来源名称、时间、口径、验证状态和缺失行为。 |
 | `fetch_errors.csv` | 记录部分行情或财务抓取失败；字段失败时下游必须写 `来源缺失`。 |
 | `auto_prepare_manifest.json` | 记录主题、输入、输出、候选数量、筛选规则和是否少于 8 只。 |
@@ -141,6 +175,7 @@ ST、`*ST` 或退市风险的公司，最多保留 15 只。少于 8 只时可�
 | 昨收、今开、最高、最低、成交量 | 腾讯行情 API、AkShare 公开行情接口 | 用户提供行情导出 | 写 `来源缺失`，不要估算 |
 | 量比 | AkShare 公开行情接口 | 用户提供行情导出 | 写 `来源缺失`，不要用成交量自行近似 |
 | 近 5 日和近 20 日涨跌幅 | AkShare `stock_zh_a_hist(..., adjust="qfq")` 前复权收盘价自行计算，并注明计算日期 | 用户提供价格序列 | 写 `来源缺失`，不要用记忆补数，也不要写成未来收益判断 |
+| 近 60 日和近 120 日涨跌幅 | AkShare `stock_zh_a_hist(..., adjust="qfq")` 前复权收盘价自行计算，并注明计算日期 | 用户提供价格序列 | 写 `来源缺失`，不要用记忆补数，也不要写成未来收益判断 |
 | 总市值、流通市值、动态 PE | 腾讯行情 API、AkShare 估值或个股指标 | 东方财富公开页交叉核验 | 写 `来源缺失`，注明缺少估值口径 |
 | PB、PS | AkShare 估值或个股指标、东方财富公开页交叉核验 | 用户提供数据库导出 | 写 `来源缺失`，注明缺少估值口径 |
 | 营收、净利润、扣非净利润、EPS、BPS、经营现金流/股 | AkShare `stock_financial_abstract` 最新一期摘要、东方财富数据中心、巨潮资讯定期报告 | 用户提供财务表 | 写 `来源缺失`，不要用行业均值替代 |
@@ -155,6 +190,23 @@ ST、`*ST` 或退市风险的公司，最多保留 15 只。少于 8 只时可�
 | 解禁、减持、回购、停复牌、ST、监管问询 | 巨潮资讯、交易所公告 | AkShare 事件类数据、用户材料 | 写 `来源缺失`，不得弱化风险 |
 | 融资融券、北向、资金流 | 交易所融资融券数据、AkShare 资金流数据 | 东方财富公开页面 | 写 `来源缺失`，不要写方向性判断 |
 | 指数、行业、概念成分 | 中证指数公开资料、AkShare 指数和板块数据 | 东方财富和同花顺公开概念页 | 概念标签只作线索，不作暴露证据 |
+| 量比、振幅 | AkShare `stock_zh_a_spot_em` 全市场实时快照 | 用户提供行情导出 | 写 `来源缺失`，不得自行计算 |
+| 60 日、120 日收益率 | AkShare `stock_zh_a_hist` 前复权收盘价自行计算 | 用户提供价格序列 | 写 `来源缺失`，不得写成未来收益判断 |
+| 板块异动、领涨股 | AkShare `stock_board_change_em` | 东方财富公开页面 | 用于 why-now 线索，不证明业务暴露 |
+| 涨停股票池 | AkShare `stock_zt_pool_em` | 东方财富公开页面 | 不用于基本面结论 |
+| 宏观指标 GDP/CPI/PPI/PMI | AkShare 宏观接口 (`macro_china_gdp`, `macro_china_cpi`, `macro_china_ppi`, `macro_china_pmi`) | 国家统计局公开数据 | 用于行业背景，不得外推到单家公司 |
+| 主营构成 | AkShare `stock_zygc_em` | 年报、半年报 | 东方财富来源需公告核验 |
+| 公司概况 | AkShare `stock_profile_cninfo` | 巨潮资讯 | 巨潮优先 |
+| 股本结构 | AkShare `stock_zh_a_gbjg_em` | 交易所或公告 | 巨潮优先 |
+| 北向资金和持股 | AkShare `stock_hsgt_fund_flow_summary_em`, `stock_hsgt_hold_stock_em` | 交易所公开数据 | 只说明外资流向，不作为基本面证据 |
+| 融资融券余额 | AkShare `stock_margin_sse` | 交易所公开数据 | 用作交易风险参考 |
+| 概念/行业板块实时行情 | AkShare `stock_board_concept_spot_em`, `stock_board_industry_spot_em` | 东方财富公开数据 | 不证明业务暴露 |
+| 基金重仓股 | AkShare `fund_report_stock_cninfo` | 巨潮基金报告 | 用于观察机构持仓和拥挤度 |
+| ETF 行情 | AkShare `fund_etf_spot_em` | 东方财富公开数据 | 用于市场交易工具参考 |
+| ST/退市 | AkShare `stock_zh_a_st_em` | 东方财富公开数据 | 进入风险检查 |
+| 停复牌 | AkShare `stock_tfp_em` | 东方财富公开数据 | 进入风险检查 |
+| 限售解禁 | AkShare `stock_restricted_release_summary_em` | 东方财富公开数据 | 进入风险检查 |
+| 股权质押 | AkShare `stock_gpzy_pledge_ratio_em` | 东方财富公开数据 | 进入风险检查 |
 
 ## 研究数据包契约
 
@@ -169,10 +221,25 @@ ST、`*ST` 或退市风险的公司，最多保留 15 只。少于 8 只时可�
 |---|---|---|---|
 | `source_manifest.json` | 必需 | 声明每个数据文件的来源、时间、口径和验证状态 | 整个数据包只能作为 `user_provided` 线索，不得升级为 `verified` |
 | `peer_universe.csv` | 必需 | 定义 8 到 15 只候选公司、交易所、主题暴露和 peer 分组 | 不能执行 comps 或 idea shortlist，只能要求补股票池 |
-| `market_snapshot.csv` | 可选 | 提供行情、估值、市值、流动性和前复权短期表现快照 | 行情、估值、流动性和短期表现字段写 `来源缺失`，不得按最新表现排序 |
+| `market_snapshot.csv` | 可选 | 提供行情、估值、市值、流动性、量比、振幅和前复权短期表现快照（含 60/120 日收益率） | 行情、估值、流动性和短期表现字段写 `来源缺失`，不得按最新表现排序 |
 | `financial_summary.csv` | 可选 | 提供报告期财务摘要、盈利质量和资产负债字段 | 财务和质量字段写 `来源缺失` 或 `口径不可比` |
 | `company_exposure.md` | 可选 | 保存公司业务暴露、订单、产能、客户和产品证据摘录 | 主题暴露只能进入 `待验证`，不得作为核心 idea 入选依据 |
 | `events_and_risks.md` | 可选 | 保存催化、监管、减持、解禁、ST、停复牌和失效条件 | 风险字段写 `来源缺失`，不得弱化风险语言 |
+| `market_context_fund_flow.csv` | 可选 | 行业资金流排名、主力净流入、大单资金流向 | 只用于市场语境，不作为基本面证据 |
+| `market_context_board_changes.csv` | 可选 | 板块异动、涨跌幅、领涨股 | 用于 why-now 线索，不证明业务暴露 |
+| `market_context_limit_up.csv` | 可选 | 涨停股票池、涨停原因 | 不用于基本面结论 |
+| `macro_context.csv` | 可选 | GDP、CPI、PPI、PMI 宏观指标 | 用于行业背景，不得外推到单家公司 |
+| `company_details.csv` | 可选 | 主营构成、公司概况、股本结构 | 巨潮来源可作 `official_disclosure`，需报告期标注 |
+| `northbound_flow.csv` | 可选 | 北向资金净流入趋势 | 只说明外资流向，不作为基本面证据 |
+| `northbound_holdings.csv` | 可选 | 北向持股数量和比例 | 只用于市场语境，不说明基本面优劣 |
+| `margin_trading.csv` | 可选 | 融资融券余额和买入额 | 用作交易风险参考 |
+| `board_sector_context.csv` | 可选 | 概念板块和行业板块实时行情 | 不证明业务暴露 |
+| `fund_heavy_stocks.csv` | 可选 | 基金重仓股与 peer 交叉 | 用于观察机构持仓和拥挤度 |
+| `etf_list.csv` | 可选 | ETF 行情列表 | 用于市场交易工具参考 |
+| `market_context_stock_fund_flow.csv` | 可选 | 个股资金流排名和主力净流入 | 只用于市场语境，不作为基本面证据 |
+| `index_valuation.csv` | 可选 | 指数估值历史（PE、PB、股息率） | 来源等级 `official_statistics` |
+| `market_pe_pb.csv` | 可选 | A 股整体 PE/PB | 用于市场估值语境 |
+| `index_spot.csv` | 可选 | 主要指数实时行情 | 用于大盘背景 |
 
 ### `source_manifest.json`
 
@@ -231,6 +298,8 @@ ST、`*ST` 或退市风险的公司，最多保留 15 只。少于 8 只时可�
 | `pct_change` | 快照周期涨跌幅 |
 | `amount` | 成交额 |
 | `turnover_rate` | 换手率 |
+| `volume_ratio` | 量比，来自 AkShare `stock_zh_a_spot_em` |
+| `amplitude` | 振幅，来自 AkShare `stock_zh_a_spot_em` |
 | `market_cap` | 总市值 |
 | `float_market_cap` | 流通市值 |
 | `pe_ttm` | TTM 口径 PE |
@@ -238,6 +307,8 @@ ST、`*ST` 或退市风险的公司，最多保留 15 只。少于 8 只时可�
 | `ps_ttm` | TTM 口径 PS |
 | `return_5d` | AkShare 前复权收盘价计算的 5 个交易日收益率，单位为百分比 |
 | `return_20d` | AkShare 前复权收盘价计算的 20 个交易日收益率，单位为百分比 |
+| `return_60d` | AkShare 前复权收盘价计算的 60 个交易日收益率，单位为百分比 |
+| `return_120d` | AkShare 前复权收盘价计算的 120 个交易日收益率，单位为百分比 |
 | `return_basis` | 短期表现来源和计算口径，例如 `AkShare 前复权收盘价，截至 <日期>` |
 | `snapshot_time` | 行情时间戳或访问时间 |
 | `basis` | 快照、收盘、前复权、未复权或用户提供口径 |
