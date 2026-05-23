@@ -44,8 +44,9 @@ period, and unit.
 `peer_universe.csv` 生成 `market_snapshot.csv`、`financial_summary.csv`、
 `source_manifest.json` 和 `fetch_errors.csv`。`market_snapshot.csv` 包含
 AkShare 前复权收盘价计算的 `return_5d`、`return_20d`、`return_60d`、`return_120d`
-和 `return_basis`，以及 AkShare `stock_zh_a_spot_em` 提供的 `volume_ratio`
-和 `amplitude`。这些字段只用于短期历史表现展示，不参与估值或质量统计。
+和 `return_basis`，AkShare `stock_zh_a_spot_em` 提供的 `volume_ratio`
+和 `amplitude`，以及 AkShare `stock_value_em` 提供的 `ps_ttm`。短期
+历史表现字段不参与估值或质量统计。
 对应 manifest 条目使用 `file: "market_snapshot.csv"` 和 `field_group: "price_performance"`。
 一键入口是
 `scripts/auto_prepare_a_share_research_pack.py`；当没有种子文件时，它使用
@@ -103,7 +104,7 @@ The recommended package contains these files:
 |---|---|---|
 | `source_manifest.json` | Yes | Declares each input file's source type, source name, data time, basis, verification status, and missing-data behavior. |
 | `peer_universe.csv` | Yes | Defines the 8 to 15 candidate A-share companies, exchange, board, peer group, theme role, and exposure source reference. |
-| `market_snapshot.csv` | No | Provides timestamped price, valuation, market-cap, liquidity, volume ratio, amplitude, and short-term historical performance fields (5/20/60/120d returns). |
+| `market_snapshot.csv` | No | Provides timestamped price, valuation, market-cap, liquidity, PS(TTM), volume ratio, amplitude, and short-term historical performance fields (5/20/60/120d returns). |
 | `financial_summary.csv` | No | Provides latest-period revenue, profit, margin, ROE, leverage, and cash-flow fields. |
 | `company_exposure.md` | No | Stores business exposure, order, capacity, customer, product, and technology-route evidence grouped by company code. |
 | `events_and_risks.md` | No | Stores ST, suspension, restricted release, and pledge risk data grouped by company code. |

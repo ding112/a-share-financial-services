@@ -144,7 +144,7 @@ for bundled in sorted(PLUGINS.glob("agent-plugins/*/skills/*")):
     if not src:
         err(f"bundled-skill: {rel(bundled)}: no vertical-plugins source named '{bundled.name}'")
         continue
-    cmp = filecmp.dircmp(src, bundled)
+    cmp = filecmp.dircmp(src, bundled, ignore=[".DS_Store"])
     if cmp.diff_files or cmp.left_only or cmp.right_only:
         err(
             f"bundled-skill: {rel(bundled)}: drifted from {rel(src)} "

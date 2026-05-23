@@ -268,6 +268,17 @@ def load_akshare():
     return ak
 
 
+def retry_call(func, *args, max_retries=3, delay=2, **kwargs):
+    import time
+    for i in range(max_retries):
+        try:
+            return func(*args, **kwargs)
+        except Exception as exc:
+            if i == max_retries - 1:
+                raise exc
+            time.sleep(delay * (i + 1))
+
+
 def board_name(row: dict[str, Any]) -> str:
     return str(selected_value(row, ["板块名称", "name", "名称", "行业名称", "概念名称"]))
 
@@ -296,7 +307,7 @@ def fetch_akshare_candidates(theme: str) -> list[dict[str, Any]]:
     best: tuple[int, str, str, Any] | None = None
     for source_name, list_func, constituents_func in board_specs:
         try:
-            boards = dataframe_to_records(list_func())
+            boards = dataframe_to_records(retry_call(list_func))
         except Exception as exc:
             errors.append(f"{source_name} list failed: {exc}")
             continue
@@ -312,7 +323,7 @@ def fetch_akshare_candidates(theme: str) -> list[dict[str, Any]]:
 
     _, source_name, matched_board, constituents_func = best
     try:
-        records = dataframe_to_records(constituents_func(symbol=matched_board))
+        records = dataframe_to_records(retry_call(constituents_func, symbol=matched_board))
     except Exception as exc:
         raise RuntimeError(f"AkShare board constituents failed for `{matched_board}`: {exc}") from exc
 

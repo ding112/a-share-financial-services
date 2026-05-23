@@ -6,17 +6,23 @@ from __future__ import annotations
 import argparse
 import csv
 import datetime as dt
+import http.client
 import json
 import shutil
 import subprocess
 import sys
+import time
 import urllib.parse
 import urllib.request
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable, TypeVar
 
 MISSING = "来源缺失"
 USER_AGENT = "Mozilla/5.0 a-share-market-researcher/0.1"
+AKSHARE_RETRY_ATTEMPTS = 3
+AKSHARE_RETRY_DELAY_SECONDS = 0.5
+AKSHARE_RETRY_MAX_DELAY_SECONDS = 4.0
+T = TypeVar("T")
 
 MARKET_COLUMNS = [
     "code",
@@ -184,6 +190,44 @@ def clean_value(value: Any) -> str:
     return str(value)
 
 
+def is_transient_akshare_error(exc: Exception) -> bool:
+    if isinstance(exc, (http.client.RemoteDisconnected, ConnectionError, TimeoutError)):
+        return True
+    message = str(exc)
+    transient_markers = [
+        "Connection aborted",
+        "Connection reset",
+        "RemoteDisconnected",
+        "Read timed out",
+        "Max retries exceeded",
+        "Temporary failure",
+        "timed out",
+    ]
+    return any(marker in message for marker in transient_markers)
+
+
+def akshare_retry_delay(attempt: int) -> float:
+    return min(AKSHARE_RETRY_MAX_DELAY_SECONDS, AKSHARE_RETRY_DELAY_SECONDS * (2**attempt))
+
+
+def fetch_akshare_with_retries(operation: Callable[[], T]) -> T:
+    last_exc: Exception | None = None
+    for attempt in range(AKSHARE_RETRY_ATTEMPTS):
+        try:
+            return operation()
+        except Exception as exc:
+            if not is_transient_akshare_error(exc):
+                raise
+            last_exc = exc
+            if attempt == AKSHARE_RETRY_ATTEMPTS - 1:
+                break
+            if AKSHARE_RETRY_DELAY_SECONDS > 0:
+                time.sleep(akshare_retry_delay(attempt))
+    if last_exc is not None:
+        raise last_exc
+    raise RuntimeError("AkShare retry operation did not run")
+
+
 def format_tencent_time(value: str) -> str:
     if len(value) != 14 or not value.isdigit():
         return clean_value(value)
@@ -252,12 +296,14 @@ def fetch_akshare_price_performance(code: str, as_of: str) -> dict[str, str]:
 
     symbol = normalize_a_share_code(code).split(".", 1)[0]
     start_date, end_date = akshare_date_window(as_of)
-    frame = ak.stock_zh_a_hist(
-        symbol=symbol,
-        period="daily",
-        start_date=start_date,
-        end_date=end_date,
-        adjust="qfq",
+    frame = fetch_akshare_with_retries(
+        lambda: ak.stock_zh_a_hist(
+            symbol=symbol,
+            period="daily",
+            start_date=start_date,
+            end_date=end_date,
+            adjust="qfq",
+        )
     )
     return calculate_price_performance(frame.to_dict("records"))
 
@@ -271,7 +317,7 @@ def _load_akshare_spot_cache() -> dict[str, dict[str, str]]:
         return _AKSHARE_SPOT_CACHE
     import akshare as ak  # type: ignore[import-not-found]
 
-    frame = ak.stock_zh_a_spot_em()
+    frame = fetch_akshare_with_retries(lambda: ak.stock_zh_a_spot_em())
     cache: dict[str, dict[str, str]] = {}
     for _, row in frame.iterrows():
         code_raw = str(row.get("代码", ""))
@@ -294,6 +340,18 @@ def fetch_akshare_spot_fields(code: str) -> dict[str, str]:
         "volume_ratio": entry.get("volume_ratio", MISSING),
         "amplitude": entry.get("amplitude", MISSING),
     }
+
+
+def fetch_akshare_ps_ttm(code: str) -> dict[str, str]:
+    import akshare as ak  # type: ignore[import-not-found]
+
+    symbol = normalize_a_share_code(code).split(".", 1)[0]
+    frame = fetch_akshare_with_retries(lambda: ak.stock_value_em(symbol=symbol))
+    records = frame.to_dict("records")
+    if not records:
+        return {"ps_ttm": MISSING}
+    latest = records[-1]
+    return {"ps_ttm": clean_value(latest.get("市销率", latest.get("PS_TTM")))}
 
 
 def fetch_eastmoney_market_row(code: str, as_of: str) -> dict[str, str]:
@@ -436,6 +494,17 @@ def fetch_market_snapshot(
                     )
                 if spot_cache_loaded:
                     row.update(fetch_akshare_spot_fields(code))
+                try:
+                    row.update(fetch_akshare_ps_ttm(code))
+                except Exception as exc:
+                    errors.append(
+                        {
+                            "code": code,
+                            "source": "akshare",
+                            "stage": "ps_ttm",
+                            "error": str(exc),
+                        }
+                    )
                 rows.append(row)
             else:
                 row = fetch_eastmoney_market_row(code, as_of)
@@ -452,6 +521,17 @@ def fetch_market_snapshot(
                     )
                 if spot_cache_loaded:
                     row.update(fetch_akshare_spot_fields(code))
+                try:
+                    row.update(fetch_akshare_ps_ttm(code))
+                except Exception as exc:
+                    errors.append(
+                        {
+                            "code": code,
+                            "source": "akshare",
+                            "stage": "ps_ttm",
+                            "error": str(exc),
+                        }
+                    )
                 rows.append(row)
         except Exception as exc:
             errors.append(
@@ -745,6 +825,18 @@ def write_source_manifest(
                 "missing_behavior": "缺失时量比和振幅字段写来源缺失，不得自行计算",
             },
             {
+                "file": "market_snapshot.csv",
+                "field_group": "ps_ttm",
+                "source_type": "public_market_data",
+                "source_name": "fixture ps_ttm"
+                if market_source == "fixture"
+                else "AkShare stock_value_em",
+                "data_time": as_of,
+                "period_or_basis": "市销率 PS(TTM)，输出列为 ps_ttm",
+                "verification_status": verification_status(market_source),
+                "missing_behavior": "缺失时 ps_ttm 写来源缺失，不得用市值和收入自行估算",
+            },
+            {
                 "file": "financial_summary.csv",
                 "source_type": "public_market_data",
                 "source_name": source_name(financial_source, "financial_summary"),
@@ -765,13 +857,20 @@ def write_fetch_errors(output_dir: Path, errors: list[dict[str, str]]) -> None:
     write_csv(output_dir / "fetch_errors.csv", errors, ERROR_COLUMNS)
 
 
+def copy_peer_universe_if_needed(peer_universe: Path, output_dir: Path) -> None:
+    destination = output_dir / "peer_universe.csv"
+    if peer_universe.resolve() == destination.resolve():
+        return
+    shutil.copyfile(peer_universe, destination)
+
+
 def run_pipeline(args: argparse.Namespace) -> int:
     peer_universe = Path(args.peer_universe)
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     peers = read_peer_universe(peer_universe)
-    shutil.copyfile(peer_universe, output_dir / "peer_universe.csv")
+    copy_peer_universe_if_needed(peer_universe, output_dir)
     market_rows, market_errors = fetch_market_snapshot(
         peers,
         args.market_source,
