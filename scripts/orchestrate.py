@@ -21,9 +21,12 @@ import anthropic
 import jsonschema
 
 ALLOWED_TARGETS = {
-    "pitch-agent", "market-researcher", "earnings-reviewer", "meeting-prep-agent",
-    "model-builder", "gl-reconciler", "kyc-screener",
-    "valuation-reviewer", "month-end-closer", "statement-auditor",
+    "pitch-agent",
+    "market-researcher",
+    "a-share-market-researcher",
+    "a-share-screener",
+    "earnings-reviewer",
+    "model-builder",
 }
 
 HANDOFF_PAYLOAD_SCHEMA = {

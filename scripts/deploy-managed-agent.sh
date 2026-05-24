@@ -10,7 +10,7 @@
 # so their JSON is schema-checked before the orchestrator consumes it.
 #
 # Usage: scripts/deploy-managed-agent.sh <slug>
-#   e.g. scripts/deploy-managed-agent.sh gl-reconciler
+#   e.g. scripts/deploy-managed-agent.sh a-share-screener
 
 set -euo pipefail
 
