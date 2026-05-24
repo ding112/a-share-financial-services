@@ -29,11 +29,13 @@ from check_a_share_comps_generator import validate_comps_generator  # noqa: E402
 from check_a_share_comps_workbook import validate_comps_workbook  # noqa: E402
 from check_a_share_research_handoff import validate_research_handoff  # noqa: E402
 from check_a_share_research_note import validate_research_note  # noqa: E402
+from check_a_share_dashboard import validate_dashboard  # noqa: E402
 from check_a_share_research_pack_fixtures import validate_fixtures  # noqa: E402
 from check_a_share_research_pack_prep import validate_prep_script  # noqa: E402
 from check_a_share_public_data_fetcher import validate_public_data_fetcher  # noqa: E402
 from check_a_share_auto_prepare import validate_auto_prepare  # noqa: E402
 from check_a_share_auxiliary_fetchers import validate_auxiliary_fetchers  # noqa: E402
+from check_a_share_annual_report_fetcher import validate_annual_report_fetcher  # noqa: E402
 
 try:
     import yaml
@@ -252,6 +254,9 @@ for auto_prepare_error in validate_auto_prepare():
 for auxiliary_fetcher_error in validate_auxiliary_fetchers():
     err(auxiliary_fetcher_error)
 
+for annual_report_fetcher_error in validate_annual_report_fetcher():
+    err(annual_report_fetcher_error)
+
 for generator_error in validate_comps_generator():
     err(generator_error)
 
@@ -263,6 +268,9 @@ for handoff_error in validate_research_handoff():
 
 for note_error in validate_research_note():
     err(note_error)
+
+for dashboard_error in validate_dashboard():
+    err(dashboard_error)
 
 # --- report ----------------------------------------------------------------
 if errors:

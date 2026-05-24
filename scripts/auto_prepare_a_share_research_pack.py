@@ -19,6 +19,7 @@ EVENTS_FETCHER = ROOT / "scripts/fetch_a_share_events_risks.py"
 MARKET_CONTEXT_FETCHER = ROOT / "scripts/fetch_a_share_market_context.py"
 MACRO_CONTEXT_FETCHER = ROOT / "scripts/fetch_a_share_macro_context.py"
 COMPANY_DETAILS_FETCHER = ROOT / "scripts/fetch_a_share_company_details.py"
+ANNUAL_REPORT_FETCHER = ROOT / "scripts/fetch_a_share_annual_reports.py"
 NORTHBOUND_MARGIN_FETCHER = ROOT / "scripts/fetch_a_share_northbound_margin.py"
 BOARD_SECTOR_FETCHER = ROOT / "scripts/fetch_a_share_board_sector.py"
 FUND_HOLDINGS_FETCHER = ROOT / "scripts/fetch_a_share_fund_holdings.py"
@@ -55,6 +56,8 @@ AUTO_OUTPUTS = [
     "market_context_stock_fund_flow.csv",
     "macro_context.csv",
     "company_details.csv",
+    "annual_reports.csv",
+    "annual_reports/",
     "northbound_flow.csv",
     "northbound_holdings.csv",
     "margin_trading.csv",
@@ -217,7 +220,15 @@ def write_csv(path: Path, rows: list[dict[str, Any]], fieldnames: list[str]) -> 
 
 
 def complete_research_pack(output_dir: Path) -> bool:
-    return all((output_dir / filename).is_file() for filename in AUTO_OUTPUTS)
+    for filename in AUTO_OUTPUTS:
+        path = output_dir / filename
+        if filename.endswith("/"):
+            if not path.is_dir():
+                return False
+        else:
+            if not path.is_file():
+                return False
+    return True
 
 
 def selected_value(row: dict[str, Any], names: list[str]) -> Any:
@@ -571,6 +582,25 @@ def run_company_details_fetcher(args: argparse.Namespace, peer_path: Path, outpu
     )
 
 
+def run_annual_report_fetcher(args: argparse.Namespace, peer_path: Path, output_dir: Path) -> None:
+    source = "fixture" if args.universe_source == "fixture" else "cninfo"
+    _run_optional_fetcher(
+        "fetch_a_share_annual_reports.py",
+        [
+            sys.executable,
+            str(ANNUAL_REPORT_FETCHER),
+            "--peer-universe",
+            str(peer_path),
+            "--output-dir",
+            str(output_dir),
+            "--as-of",
+            args.as_of,
+            "--source",
+            source,
+        ],
+    )
+
+
 def run_northbound_margin_fetcher(args: argparse.Namespace, output_dir: Path) -> None:
     _run_optional_fetcher(
         "fetch_a_share_northbound_margin.py",
@@ -673,6 +703,7 @@ def main() -> int:
     run_market_context_fetcher(args, output_dir)
     run_macro_context_fetcher(args, output_dir)
     run_company_details_fetcher(args, peer_path, output_dir)
+    run_annual_report_fetcher(args, peer_path, output_dir)
     run_northbound_margin_fetcher(args, output_dir)
     run_board_sector_fetcher(args, output_dir)
     run_fund_holdings_fetcher(args, peer_path, output_dir)

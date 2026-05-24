@@ -152,6 +152,7 @@ def validate_auxiliary_fetchers() -> list[str]:
         "market_context_stock_fund_flow.csv",
         "macro_context.csv",
         "company_details.csv",
+        "annual_reports.csv",
         "northbound_flow.csv",
         "northbound_holdings.csv",
         "margin_trading.csv",
@@ -164,6 +165,8 @@ def validate_auxiliary_fetchers() -> list[str]:
     ]:
         if filename not in auto_prepare.AUTO_OUTPUTS:
             errors.append(f"AUTO_OUTPUTS missing {filename}")
+    if "annual_reports/" not in auto_prepare.AUTO_OUTPUTS:
+        errors.append("AUTO_OUTPUTS missing annual_reports/")
 
     return errors
 

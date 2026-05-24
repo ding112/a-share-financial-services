@@ -145,6 +145,8 @@ data-prep worker 使用的一键准备入口。它负责在 `research-pack/` 缺
 | `market_context_limit_up.csv` | 涨停股票池和涨停原因。 |
 | `macro_context.csv` | GDP、CPI、PPI、PMI 宏观指标。 |
 | `company_details.csv` | 主营构成、公司概况和股本结构。 |
+| `annual_reports.csv` | 最近 2 个年报年度的公告标题、公告日期、巨潮链接、PDF 链接和本地 PDF 路径。 |
+| `annual_reports/` | 年报 PDF 原文目录，用于后续抽取主营业务、订单、产能、客户和技术路线证据。 |
 | `northbound_flow.csv` | 北向资金净流入趋势。 |
 | `northbound_holdings.csv` | 北向持股数量和比例。 |
 | `margin_trading.csv` | 融资融券余额和买入额。 |
@@ -230,6 +232,7 @@ ST、`*ST` 或退市风险的公司，最多保留 15 只。少于 8 只时可�
 | `market_context_limit_up.csv` | 可选 | 涨停股票池、涨停原因 | 不用于基本面结论 |
 | `macro_context.csv` | 可选 | GDP、CPI、PPI、PMI 宏观指标 | 用于行业背景，不得外推到单家公司 |
 | `company_details.csv` | 可选 | 主营构成、公司概况、股本结构 | 巨潮来源可作 `official_disclosure`，需报告期标注 |
+| `annual_reports.csv` | 可选 | 最近 2 个年报年度的法定披露索引和本地 PDF 路径 | 缺失时公司业务暴露、订单、产能、客户和技术路线保持 `待验证` |
 | `northbound_flow.csv` | 可选 | 北向资金净流入趋势 | 只说明外资流向，不作为基本面证据 |
 | `northbound_holdings.csv` | 可选 | 北向持股数量和比例 | 只用于市场语境，不说明基本面优劣 |
 | `margin_trading.csv` | 可选 | 融资融券余额和买入额 | 用作交易风险参考 |
@@ -336,6 +339,29 @@ ST、`*ST` 或退市风险的公司，最多保留 15 只。少于 8 只时可�
 | `asset_liability_ratio` | 资产负债率 |
 | `operating_cash_flow` | 经营现金流 |
 | `basis` | 合并、母公司、年度、季度或用户提供口径 |
+
+### `annual_reports.csv`
+
+`annual_reports.csv` 是可选文件。存在时，它只证明本地数据包包含年报原文和
+公告索引；下游必须从 PDF 原文或经引用的摘录中抽取具体事实，不能仅凭
+`annual_reports.csv` 把业务暴露升级为已验证。
+
+推荐列：
+
+| 字段 | 含义 |
+|---|---|
+| `code` | 与 `peer_universe.csv` 匹配的证券代码 |
+| `name` | 证券简称 |
+| `report_year` | 年报年度 |
+| `announcement_title` | 巨潮公告标题 |
+| `announcement_date` | 公告日期 |
+| `disclosure_url` | 巨潮公告详情页链接 |
+| `pdf_url` | 巨潮 PDF 原文链接 |
+| `local_pdf_path` | research-pack 内的本地 PDF 相对路径 |
+| `source_type` | 固定为 `official_disclosure` |
+| `source_name` | 固定为 `巨潮资讯` |
+| `verification_status` | 固定为 `verified`，仅表示公告来源已定位 |
+| `basis` | 年度报告原文 PDF |
 
 ### Markdown evidence files
 
