@@ -13,6 +13,8 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from a_share_output_paths import stage_dir
+
 ROOT = Path(__file__).resolve().parents[1]
 FETCHER = ROOT / "scripts/fetch_a_share_public_data.py"
 EVENTS_FETCHER = ROOT / "scripts/fetch_a_share_events_risks.py"
@@ -100,7 +102,10 @@ FIXTURE_CANDIDATES = [
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--theme", required=True, help="Chinese A-share theme or sector.")
-    parser.add_argument("--output-dir", required=True, help="Directory for the research-pack.")
+    parser.add_argument(
+        "--output-dir",
+        help="Directory for the research-pack. Defaults to out/<theme>/research-pack.",
+    )
     parser.add_argument("--as-of", required=True, help="Access date or quote timestamp.")
     parser.add_argument("--peer-universe", help="Optional existing peer_universe.csv.")
     parser.add_argument(
@@ -679,7 +684,8 @@ def main() -> int:
     args = parse_args()
     if args.max_peers < 1:
         raise SystemExit("--max-peers must be positive")
-    output_dir = Path(args.output_dir)
+    output_dir = Path(args.output_dir) if args.output_dir else stage_dir(args.theme, "research-pack")
+    output_dir = output_dir.resolve()
     log_step(f"starting auto research-pack: theme={args.theme} output_dir={output_dir}")
     ensure_writable_output(output_dir, args.force)
 

@@ -122,7 +122,6 @@ data-prep worker 使用的一键准备入口。它负责在 `research-pack/` 缺
 ```bash
 .venv/bin/python scripts/auto_prepare_a_share_research_pack.py \
   --theme 机器人产业链 \
-  --output-dir out/机器人产业链/research-pack \
   --as-of 2026-05-22
 ```
 

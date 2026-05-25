@@ -9,6 +9,8 @@ import json
 import statistics
 from pathlib import Path
 
+from a_share_output_paths import stage_dir
+
 MISSING = "来源缺失"
 
 MAIN_FIELDS = [
@@ -107,7 +109,10 @@ STAT_METRICS = [
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--research-pack", required=True, help="Directory containing research-pack files.")
-    parser.add_argument("--output-dir", required=True, help="Directory where comps artifact files are written.")
+    parser.add_argument(
+        "--output-dir",
+        help="Directory where comps artifact files are written. Defaults to out/<theme>/comps.",
+    )
     parser.add_argument("--theme", required=True, help="Chinese theme name for comps_summary.md.")
     return parser.parse_args()
 
@@ -489,7 +494,7 @@ def write_summary(
 def main() -> int:
     args = parse_args()
     pack_dir = Path(args.research_pack)
-    output_dir = Path(args.output_dir)
+    output_dir = Path(args.output_dir) if args.output_dir else stage_dir(args.theme, "comps")
     output_dir.mkdir(parents=True, exist_ok=True)
 
     peers = read_csv(pack_dir / "peer_universe.csv")
