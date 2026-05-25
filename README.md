@@ -1,66 +1,74 @@
 # Claude for Financial Services
 
-Reference agents, skills, and data connectors for the financial-services workflows we see most — investment banking, equity research, private equity, and wealth management.
+面向股票研究、A 股交易研究和投行建模工作流的参考 agents、skills 和数据
+连接器集合。
 
-Everything here is available **two ways from one source**: install it as a [Claude Cowork](https://claude.com/product/cowork) plugin, or deploy it through the [Claude Managed Agents API](https://docs.claude.com/en/api/managed-agents) behind your own workflow engine. Same system prompt, same skills — you choose where it runs.
+本仓库的核心内容可以用两种方式交付：作为 Claude Cowork 插件安装，或通过
+Claude Managed Agents API 部署到你自己的工作流引擎里。两种方式共用同一份
+系统提示词和技能文件。
 
 > [!IMPORTANT]
-> Nothing in this repository constitutes investment, legal, tax, or accounting advice. These agents draft analyst work product — models, memos, research notes, reconciliations — for review by a qualified professional. They do not make investment recommendations, execute transactions, bind risk, post to a ledger, or approve onboarding; every output is staged for human sign-off. You are responsible for verifying outputs and for compliance with the laws and regulations that apply to your firm.
+> 本仓库内容不构成投资、法律、税务或会计建议。Agents 只用于起草分析师工作
+> 成果，例如模型、备忘录、研究笔记和演示材料；所有输出都需要合格专业人员
+> 复核。Agents 不提供投资建议，不执行交易，不绑定风险，不入账，也不批准客户
+> 准入。你需要自行验证输出，并遵守适用于你所在机构的法律法规。
 
-What's in the repo:
+仓库内容包括：
 
-- **[Agents](#agents)** — named, end-to-end workflow agents (Pitch Agent, Market Researcher, GL Reconciler, …). Each ships as a Cowork plugin **and** as a [Claude Managed Agent template](./managed-agent-cookbooks) you deploy via `/v1/agents`.
-- **[Vertical plugins](#vertical-plugins)** — the underlying skills, slash commands, and data connectors, bundled by FSI vertical. Install these on their own if you just want `/comps`, `/dcf`, `/earnings` and the connectors without a full agent.
+- **[Agents](#agents)**：端到端工作流 agents，例如 Pitch Agent、Market
+  Researcher、A-share Screener。每个 agent 都同时提供 Cowork 插件和
+  [Claude Managed Agent 模板](./managed-agent-cookbooks)。
+- **[Vertical plugins](#vertical-plugins)**：按业务领域组织的 skills、slash
+  commands 和数据连接器。如果只需要 `/comps`、`/dcf`、`/earnings` 等能力，
+  可以单独安装这些插件。
 
 ## Agents
 
-Each agent is named for the workflow it runs. They're starting points: install the ones that match your work, then tune the prompts, skills, and connectors to how your firm does it.
+每个 agent 都对应一个完整工作流。Agent 插件是自包含的，会打包它需要的
+skills，因此安装 agent 后即可使用。
 
-Each agent plugin is **self-contained** — it bundles the skills it uses, so installing the agent is all you need.
-
-| Function | Agent | What it does |
+| 功能 | Agent | 作用 |
 |---|---|---|
-| **Coverage & advisory** | **[Pitch Agent](./plugins/agent-plugins/pitch-agent)** | Comps, precedents, LBO → branded pitch deck, end to end |
-| | **[Meeting Prep Agent](./plugins/agent-plugins/meeting-prep-agent)** | Briefing pack before every client meeting |
-| **Research & modeling** | **[Market Researcher](./plugins/agent-plugins/market-researcher)** | Sector or theme → industry overview, competitive landscape, peer comps, ideas shortlist |
-| | **[A-share Market Researcher](./plugins/agent-plugins/a-share-market-researcher)** | A 股行业或主题 → 行业概览、竞争格局、可比公司、想法清单、中文研究笔记 |
-| | **[Earnings Reviewer](./plugins/agent-plugins/earnings-reviewer)** | Earnings call + filings → model update → note draft |
-| | **[Model Builder](./plugins/agent-plugins/model-builder)** | DCF, LBO, 3-statement, comps — live in Excel |
-| **Fund admin & finance ops** | **[Valuation Reviewer](./plugins/agent-plugins/valuation-reviewer)** | Ingests GP packages, runs valuation template, stages LP reporting |
-| | **[GL Reconciler](./plugins/agent-plugins/gl-reconciler)** | Finds breaks, traces root cause, routes for sign-off |
-| | **[Month-End Closer](./plugins/agent-plugins/month-end-closer)** | Accruals, roll-forwards, variance commentary |
-| | **[Statement Auditor](./plugins/agent-plugins/statement-auditor)** | Audits LP statements before distribution |
-| **Operations & onboarding** | **[KYC Screener](./plugins/agent-plugins/kyc-screener)** | Parses onboarding docs, runs the rules engine, flags gaps |
+| 覆盖与顾问 | **[Pitch Agent](./plugins/agent-plugins/pitch-agent)** | 从可比公司、交易先例和 LBO 到品牌化 pitch deck |
+| 研究与建模 | **[Market Researcher](./plugins/agent-plugins/market-researcher)** | 生成行业或主题研究、竞争格局、可比公司和 idea shortlist |
+| | **[A-share Market Researcher](./plugins/agent-plugins/a-share-market-researcher)** | 生成 A 股行业或主题概览、竞争格局、可比公司和中文研究笔记 |
+| | **[A-share Screener](./plugins/agent-plugins/a-share-screener)** | 基于题材、事件、量化和风险检查生成 A 股短线研究清单 |
+| | **[Earnings Reviewer](./plugins/agent-plugins/earnings-reviewer)** | 从财报电话会和公告到模型更新与研究笔记草稿 |
+| | **[Model Builder](./plugins/agent-plugins/model-builder)** | 生成 DCF、LBO、三表模型和可比公司分析 Excel |
 
-For Managed Agent deployment — `agent.yaml`, leaf-worker subagents, steering-event examples, and per-agent security notes — see **[managed-agent-cookbooks/](./managed-agent-cookbooks)**.
+Managed Agent 部署模板位于
+[managed-agent-cookbooks/](./managed-agent-cookbooks)，包含 `agent.yaml`、
+叶子 subagents、steering examples 和安全说明。
 
-## Repository Layout
+## 仓库结构
 
-```
+```text
 plugins/
-  agent-plugins/               # Named agents — one self-contained plugin each
-  vertical-plugins/            # Skill + command bundles by FSI vertical, plus MCP connectors
-  partner-built/               # Partner-authored plugins (LSEG, S&P Global)
-managed-agent-cookbooks/       # Claude Managed Agent cookbooks — one dir per agent
-claude-for-msft-365-install/   # Admin tooling to provision the Claude Microsoft 365 add-in
-scripts/                       # deploy-managed-agent.sh · check.py · validate.py · orchestrate.py · sync-agent-skills.py
+  agent-plugins/               # 命名 agents，每个 agent 一个自包含插件
+  vertical-plugins/            # 按业务领域组织的 skills、commands 和 MCP 配置
+  partner-built/               # 合作伙伴插件，例如 LSEG 和 S&P Global
+managed-agent-cookbooks/       # Claude Managed Agent 模板，每个 agent 一个目录
+claude-for-msft-365-install/   # Microsoft 365 add-in 管理员安装工具
+scripts/                       # 部署、校验、编排和同步脚本
 ```
 
-## Getting Started
+## 快速开始
 
 ### Cowork
 
-In Cowork, open **Settings → Plugins → Add plugin** and either:
+在 Cowork 中打开 **Settings -> Plugins -> Add plugin**，然后选择一种方式：
 
-- **Paste this repo URL** — `https://github.com/anthropics/claude-for-financial-services` — then pick the agents and verticals you want from the marketplace list, or
-- **Upload a zip** — zip any directory under `plugins/` (e.g. `plugins/agent-plugins/pitch-agent/`) and drop it in.
+- 粘贴仓库 URL：`https://github.com/anthropics/claude-for-financial-services`，
+  再从 marketplace 列表中选择需要的 agents 和 vertical plugins。
+- 上传 zip：将 `plugins/` 下任意插件目录打包，例如
+  `plugins/agent-plugins/pitch-agent/`，再上传。
 
 ### Claude Code
 
 本地使用 `a-share-screener` 的安装和调用方式见
-[`docs/quick-start.md`](./docs/quick-start.md)。
+[docs/quick-start.md](./docs/quick-start.md)。
 
-A-share Market Researcher 的自动 `research-pack` 准备流程需要本地 Python
+`a-share-market-researcher` 的自动 `research-pack` 准备流程需要本地 Python
 虚拟环境和 AkShare。先在仓库根目录创建 `.venv` 并安装依赖：
 
 ```bash
@@ -74,66 +82,71 @@ python -m pip install -r requirements.txt
 运行受控本地脚本；不会自动安装依赖，也不会运行未列出的抓取脚本。
 
 ```bash
-# Add the marketplace
+# 添加 marketplace
 claude plugin marketplace add anthropics/claude-for-financial-services
 
-# Core skills + connectors (install first)
+# 先安装核心建模能力和连接器
 claude plugin install financial-analysis@claude-for-financial-services
 
-# Named agents — pick the ones you want
+# 按需安装命名 agents
 claude plugin install pitch-agent@claude-for-financial-services
-claude plugin install gl-reconciler@claude-for-financial-services
+claude plugin install a-share-screener@claude-for-financial-services
+claude plugin install a-share-market-researcher@claude-for-financial-services
 claude plugin install market-researcher@claude-for-financial-services
 
-# Vertical skill bundles
+# 按需安装 vertical skill bundles
 claude plugin install investment-banking@claude-for-financial-services
 claude plugin install equity-research@claude-for-financial-services
 ```
 
-Once installed, agents appear in Cowork dispatch, skills fire automatically when relevant, and slash commands are available in your session (`/comps`, `/dcf`, `/earnings`, `/ic-memo`, …).
+安装后，agents 会出现在 Cowork dispatch 中；skills 会在相关任务中自动触发；
+slash commands 可以在会话中直接调用，例如 `/comps`、`/dcf`、`/earnings`、
+`/screen`。
 
 ### Claude Managed Agents
 
 ```bash
 export ANTHROPIC_API_KEY=sk-ant-...
-scripts/deploy-managed-agent.sh gl-reconciler
+scripts/deploy-managed-agent.sh a-share-screener
 ```
 
-Each template under [`managed-agent-cookbooks/`](./managed-agent-cookbooks) references the same system prompt and skills as its plugin counterpart. The deploy script resolves file references, uploads skills, creates leaf-worker subagents, and POSTs the orchestrator to `/v1/agents`. See [`scripts/orchestrate.py`](./scripts/orchestrate.py) for a reference event loop that routes `handoff_request` events between agents via your own orchestration layer.
+`managed-agent-cookbooks/` 下的每个模板都引用对应插件里的同一份系统提示词和
+skills。部署脚本会解析文件引用、上传 skills、创建叶子 subagents，并把
+orchestrator 提交到 `/v1/agents`。参考编排循环见
+[scripts/orchestrate.py](./scripts/orchestrate.py)。
 
-> **Research Preview:** subagent delegation (`callable_agents`) is a preview capability. See per-agent READMEs for security and handoff guidance.
+> **预览能力：** subagent delegation（`callable_agents`）仍是预览能力。安全
+> 和交接说明见各 agent 的 README。
 
-## How It Fits Together
+## 工作方式
 
-| | What it is | Where it lives |
+| 项目 | 含义 | 位置 |
 |---|---|---|
-| **Agents** | Self-contained plugins that own a workflow end to end — system prompt plus the skills it uses. Cowork and the Managed Agent wrapper both reference the same directory. | `plugins/agent-plugins/<slug>/` |
-| **Skills** | Domain expertise, conventions, and step-by-step methods Claude draws on automatically when relevant. Authored once in the verticals; each agent bundles a synced copy of the ones it needs. | `plugins/vertical-plugins/<vertical>/skills/` (source) · `plugins/agent-plugins/<slug>/skills/` (bundled) |
-| **Commands** | Slash actions you trigger explicitly (`/comps`, `/earnings`, `/ic-memo`). | `plugins/vertical-plugins/<vertical>/commands/` |
-| **Connectors** | [MCP servers](https://modelcontextprotocol.io/) that wire Claude to your data — terminals, research platforms, document stores. | `plugins/vertical-plugins/financial-analysis/.mcp.json` |
-| **Managed-agent wrappers** | `agent.yaml` + depth-1 subagents + steering examples for headless deployment. | `managed-agent-cookbooks/<slug>/` |
+| Agents | 自包含工作流插件，包含系统提示词和所需 skills | `plugins/agent-plugins/<slug>/` |
+| Skills | 可自动触发的领域方法、约定和步骤 | `plugins/vertical-plugins/<vertical>/skills/` 和 `plugins/agent-plugins/<slug>/skills/` |
+| Commands | 显式调用的 slash actions，例如 `/comps`、`/earnings`、`/screen` | `plugins/vertical-plugins/<vertical>/commands/` |
+| Connectors | 连接外部数据源或内部系统的 MCP 配置 | `plugins/vertical-plugins/financial-analysis/.mcp.json` |
+| Managed-agent wrappers | Headless 部署用的 `agent.yaml`、subagents 和 steering examples | `managed-agent-cookbooks/<slug>/` |
 
-Everything is file-based — markdown and JSON, no build step.
+仓库内容都是文件化的 Markdown、JSON 和 YAML，不需要构建步骤。
 
-## Vertical Plugins
+## Vertical plugins
 
-Start with **financial-analysis** — it carries the shared modeling skills and all data connectors. Add verticals for the workflows you need.
+建议从 **financial-analysis** 开始；它包含共享建模 skills 和数据连接器。然后
+按工作流增加其他 vertical plugins。
 
-| Plugin | What it adds |
+| 插件 | 作用 |
 |---|---|
-| **[financial-analysis](./plugins/vertical-plugins/financial-analysis)** *(core)* | Comps, DCF, LBO, 3-statement, deck QC, Excel audit. All 11 data connectors. |
-| **[investment-banking](./plugins/vertical-plugins/investment-banking)** | CIMs, teasers, process letters, buyer lists, merger models, deal tracking. |
-| **[equity-research](./plugins/vertical-plugins/equity-research)** | Earnings notes, initiations, model updates, thesis and catalyst tracking. |
-| **[private-equity](./plugins/vertical-plugins/private-equity)** | Sourcing, screening, diligence checklists, IC memos, portfolio monitoring. |
-| **[wealth-management](./plugins/vertical-plugins/wealth-management)** | Client reviews, financial plans, rebalancing, reporting, TLH. |
-| **[fund-admin](./plugins/vertical-plugins/fund-admin)** | GL recon, break tracing, accruals, roll-forwards, variance commentary, NAV tie-out. |
-| **[operations](./plugins/vertical-plugins/operations)** | KYC document parsing and rules-grid evaluation. |
-| **[lseg](./plugins/partner-built/lseg)** *(partner)* | Bond RV, swap curves, FX carry, options vol, macro-rates monitoring on LSEG data. |
-| **[sp-global](./plugins/partner-built/spglobal)** *(partner)* | Tear sheets, earnings previews, funding digests on S&P Capital IQ. |
+| **[financial-analysis](./plugins/vertical-plugins/financial-analysis)** | Comps、DCF、LBO、三表模型、deck QC 和 Excel audit |
+| **[investment-banking](./plugins/vertical-plugins/investment-banking)** | CIM、teaser、process letter、buyer list、merger model 和 deal tracker |
+| **[equity-research](./plugins/vertical-plugins/equity-research)** | 财报点评、首次覆盖、模型更新、投资 thesis 和催化日历 |
+| **[china-equity-trading](./plugins/vertical-plugins/china-equity-trading)** | A 股题材筛选、事件日历、盘前盘后摘要和风险检查 |
+| **[lseg](./plugins/partner-built/lseg)** | LSEG 数据上的债券 RV、swap curves、FX carry、options vol 和 macro-rates |
+| **[sp-global](./plugins/partner-built/spglobal)** | 基于 S&P Capital IQ 的 tear sheets、earnings previews 和 funding digests |
 
-## MCP Integrations
+## MCP 集成
 
-All connectors are centralized in the **financial-analysis** core plugin and shared across the rest.
+连接器集中在 **financial-analysis** 核心插件中，并可被其他插件复用。
 
 | Provider | URL |
 |---|---|
@@ -149,127 +162,101 @@ All connectors are centralized in the **financial-analysis** core plugin and sha
 | [Chronograph](https://www.chronograph.pe/) | `https://ai.chronograph.pe/mcp` |
 | [Egnyte](https://www.egnyte.com/) | `https://mcp-server.egnyte.com/mcp` |
 
-> MCP access may require a subscription or API key from the provider.
+> MCP 访问可能需要对应数据供应商的订阅或 API key。
 
-## Claude for Microsoft 365 — Install Tooling
+## Claude for Microsoft 365 安装工具
 
-If your firm runs Claude inside Excel, PowerPoint, Word, and Outlook via the Microsoft 365 add-in, [`claude-for-msft-365-install/`](./claude-for-msft-365-install) is the admin tooling to provision it against **your own cloud** — Vertex AI, Bedrock, or an internal LLM gateway — instead of Anthropic's API.
+如果你的机构通过 Microsoft 365 add-in 在 Excel、PowerPoint、Word 和 Outlook
+里使用 Claude，[claude-for-msft-365-install/](./claude-for-msft-365-install)
+提供管理员安装工具。它用于对接你自己的云环境，例如 Vertex AI、Bedrock 或
+内部 LLM gateway，而不是直接使用 Anthropic API。
 
-It's a Claude Code plugin (not a Cowork plugin) that walks an IT admin through generating the customized add-in manifest, granting Azure admin consent, and writing per-user routing config via Microsoft Graph. Install with:
+安装方式：
 
 ```bash
 claude plugin install claude-for-msft-365-install@claude-for-financial-services
 /claude-for-msft-365-install:setup
 ```
 
-This is separate from the agents and vertical plugins above — it's the on-ramp that gets the add-in deployed in a tenant, after which the agents and skills here are what runs inside it.
+这个安装工具和本仓库的 agents、vertical plugins 是分开的。它负责把 add-in
+部署到租户中；部署后，实际运行的是本仓库里的 agents 和 skills。
 
-## Making It Yours
+## 定制方式
 
-These are reference templates — they get better when you tune them to how your firm works.
+- **替换连接器**：把 `.mcp.json` 指向你的数据供应商或内部系统。
+- **增加机构语境**：把术语、流程和格式标准写入 skill 文件。
+- **带入模板**：用 `/ppt-template` 让 Claude 学习你的 PowerPoint 模板。
+- **调整 agent 范围**：编辑 `agents/<slug>.md`，让 agent 匹配团队流程。
+- **新增工作流**：复制现有结构，为新工作流创建 agent 和 cookbook。
 
-- **Swap connectors** — point `.mcp.json` at your data providers and internal systems.
-- **Add firm context** — drop your terminology, processes, and formatting standards into skill files.
-- **Bring your templates** — `/ppt-template` teaches Claude your branded PowerPoint layouts.
-- **Adjust agent scope** — edit `agents/<slug>.md` to match how your team actually runs the workflow.
-- **Add your own** — copy the structure for workflows we haven't covered.
-
-## Skill & Command Reference
+## Skill 与 command 参考
 
 <details>
-<summary><b>financial-analysis</b> — core modeling, Excel, deck QC</summary>
+<summary><b>financial-analysis</b>：核心建模、Excel 和 deck QC</summary>
 
-| Skill | Command | Description |
+| Skill | Command | 描述 |
 |---|---|---|
-| comps-analysis | `/comps` | Comparable company analysis with trading multiples |
-| dcf-model | `/dcf` | DCF valuation with WACC and sensitivity analysis |
-| lbo-model | `/lbo` | Leveraged buyout model |
-| 3-statement-model | `/3-statement-model` | Populate 3-statement financial model templates |
-| audit-xls | `/debug-model` | Excel model audit — formula tracing, hardcode detection, balance checks |
-| clean-data-xls | — | Normalize and clean tabular data in Excel |
-| deck-refresh | — | Re-link and refresh embedded charts/tables across a deck |
-| competitive-analysis | `/competitive-analysis` | Competitive landscape and market positioning |
-| ib-check-deck | — | QC presentations for errors and consistency |
-| pptx-author | — | Produce a `.pptx` file headlessly (Managed Agent mode) |
-| xlsx-author | — | Produce a `.xlsx` file headlessly (Managed Agent mode) |
-| ppt-template-creator | `/ppt-template` | Create reusable PPT template skills |
-| skill-creator | — | Guide for creating new skills |
+| comps-analysis | `/comps` | 使用交易倍数做可比公司分析 |
+| dcf-model | `/dcf` | 带 WACC 和敏感性分析的 DCF 估值 |
+| lbo-model | `/lbo` | LBO 模型 |
+| 3-statement-model | `/3-statement-model` | 填充三表模型模板 |
+| audit-xls | `/debug-model` | Excel 模型审计、公式追踪、硬编码检查和平衡校验 |
+| clean-data-xls | — | 清洗和标准化 Excel 表格数据 |
+| deck-refresh | — | 刷新 deck 中的图表和表格链接 |
+| competitive-analysis | `/competitive-analysis` | 竞争格局和市场定位分析 |
+| ib-check-deck | — | 检查演示材料的一致性和错误 |
+| pptx-author | — | 在 Managed Agent 模式下生成 `.pptx` |
+| xlsx-author | — | 在 Managed Agent 模式下生成 `.xlsx` |
+| ppt-template-creator | `/ppt-template` | 创建可复用的 PPT 模板 skill |
+| skill-creator | — | 创建新 skill 的指南 |
 
 </details>
 
 <details>
-<summary><b>investment-banking</b> — deal materials and execution</summary>
+<summary><b>investment-banking</b>：交易材料和执行</summary>
 
-| Skill | Command | Description |
+| Skill | Command | 描述 |
 |---|---|---|
-| strip-profile | `/one-pager` | One-page company profiles for pitch books |
-| pitch-deck | — | Populate pitch deck templates with data |
-| datapack-builder | — | Build data packs from CIMs and filings |
-| cim-builder | `/cim` | Draft Confidential Information Memorandums |
-| teaser | `/teaser` | Anonymous one-page company teasers |
-| buyer-list | `/buyer-list` | Strategic and financial buyer universe |
-| merger-model | `/merger-model` | Accretion/dilution M&A analysis |
-| process-letter | `/process-letter` | Bid instructions and process correspondence |
-| deal-tracker | `/deal-tracker` | Track live deals, milestones, and action items |
+| strip-profile | `/one-pager` | 生成 pitch book 使用的一页公司简介 |
+| pitch-deck | — | 用源数据填充 pitch deck 模板 |
+| datapack-builder | — | 从 CIM 和公告构建数据包 |
+| cim-builder | `/cim` | 起草 Confidential Information Memorandum |
+| teaser | `/teaser` | 生成匿名一页 teaser |
+| buyer-list | `/buyer-list` | 生成战略和财务买方名单 |
+| merger-model | `/merger-model` | 并购 accretion/dilution 分析 |
+| process-letter | `/process-letter` | 起草竞标说明和流程信 |
+| deal-tracker | `/deal-tracker` | 跟踪交易里程碑和行动项 |
 
 </details>
 
 <details>
-<summary><b>equity-research</b> — coverage and publishing</summary>
+<summary><b>equity-research</b>：覆盖和发布</summary>
 
-| Skill | Command | Description |
+| Skill | Command | 描述 |
 |---|---|---|
-| earnings-analysis | `/earnings` | Post-earnings quarterly update reports |
-| earnings-preview | `/earnings-preview` | Pre-earnings scenario analysis and key metrics |
-| initiating-coverage | `/initiate` | Institutional-quality initiation reports |
-| model-update | `/model-update` | Update financial models with new data |
-| morning-note | `/morning-note` | Morning meeting notes and trade ideas |
-| sector-overview | `/sector` | Industry landscape and thematic reports |
-| thesis-tracker | `/thesis` | Maintain and update investment theses |
-| catalyst-calendar | `/catalysts` | Track upcoming catalysts across coverage |
-| idea-generation | `/screen` | Stock screening and idea sourcing |
+| earnings-analysis | `/earnings` | 财报后季度更新报告 |
+| earnings-preview | `/earnings-preview` | 财报前情景分析和关键指标 |
+| initiating-coverage | `/initiate` | 机构级首次覆盖报告 |
+| model-update | `/model-update` | 用新数据更新财务模型 |
+| morning-note | `/morning-note` | 晨会笔记和交易想法 |
+| sector-overview | `/sector` | 行业格局和主题报告 |
+| thesis-tracker | `/thesis` | 维护和更新投资 thesis |
+| catalyst-calendar | `/catalysts` | 跟踪覆盖池催化事件 |
+| idea-generation | `/screen` | 股票筛选和 idea sourcing |
 
 </details>
 
-<details>
-<summary><b>private-equity</b> — sourcing through portfolio ops</summary>
+## 贡献
 
-| Skill | Command | Description |
-|---|---|---|
-| deal-sourcing | `/source` | Discover companies, check CRM, draft founder outreach |
-| deal-screening | `/screen-deal` | Quick pass/fail on inbound CIMs and teasers |
-| dd-checklist | `/dd-checklist` | Diligence checklists by workstream |
-| dd-meeting-prep | `/dd-prep` | Prep for management presentations and expert calls |
-| unit-economics | `/unit-economics` | ARR cohorts, LTV/CAC, net retention, revenue quality |
-| returns-analysis | `/returns` | IRR/MOIC sensitivity tables |
-| ic-memo | `/ic-memo` | Investment committee memo drafting |
-| portfolio-monitoring | `/portfolio` | Track portfolio company KPIs and variances |
-| value-creation-plan | `/value-creation` | Post-close 100-day plans and EBITDA bridges |
-| ai-readiness | `/ai-readiness` | Assess a portfolio company's AI readiness |
+本仓库主要由 Markdown、YAML 和 JSON 文件组成。新增内容时遵循以下流程：
 
-</details>
-
-<details>
-<summary><b>wealth-management</b> — advisor workflows</summary>
-
-| Skill | Command | Description |
-|---|---|---|
-| client-review | `/client-review` | Prep for client meetings with performance and talking points |
-| financial-plan | `/financial-plan` | Retirement, education, estate, and cash-flow projections |
-| portfolio-rebalance | `/rebalance` | Allocation drift analysis and tax-aware rebalancing |
-| client-report | `/client-report` | Client-facing performance reports |
-| investment-proposal | `/proposal` | Proposals for prospective clients |
-| tax-loss-harvesting | `/tlh` | Identify TLH opportunities and manage wash sales |
-
-</details>
-
-## Contributing
-
-Everything here is markdown and YAML. Fork, edit, PR. For new content:
-
-- New skill → add it under `plugins/vertical-plugins/<vertical>/skills/`, then run `python3 scripts/sync-agent-skills.py` to propagate to any agent that bundles it.
-- New agent → `plugins/agent-plugins/<slug>/` (with `agents/<slug>.md` + `skills/`) and a matching `managed-agent-cookbooks/<slug>/`.
-- Run `python3 scripts/check.py` before pushing — it lints every manifest, verifies all cross-file references resolve, and fails if any bundled skill has drifted from its vertical source.
+- 新 skill：添加到 `plugins/vertical-plugins/<vertical>/skills/`，然后运行
+  `python3 scripts/sync-agent-skills.py` 同步到使用它的 agent bundle。
+- 新 agent：添加 `plugins/agent-plugins/<slug>/`，包含
+  `agents/<slug>.md` 和 `skills/`，并创建对应的
+  `managed-agent-cookbooks/<slug>/`。
+- 提交前运行 `python3 scripts/check.py`。它会检查 manifests、跨文件引用和
+  agent bundle skill 是否与 vertical source 保持一致。
 
 ## License
 

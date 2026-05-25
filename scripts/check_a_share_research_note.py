@@ -137,6 +137,35 @@ def validate_research_note() -> list[str]:
                 errors.append(f"handoff setup failed for {pack_name}: {handoff.stderr.strip()}")
                 continue
 
+            default_note = subprocess.run(
+                [
+                    sys.executable,
+                    str(NOTE_SCRIPT),
+                    "--research-pack",
+                    str(pack_dir),
+                    "--comps-dir",
+                    str(comps_dir),
+                    "--handoff-dir",
+                    str(handoff_dir),
+                    "--theme",
+                    theme,
+                    "--angle",
+                    angle,
+                    "--as-of",
+                    "2026-05-18",
+                ],
+                cwd=tmp_dir,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            if default_note.returncode != 0:
+                errors.append(f"default note assembly failed for {pack_name}: {default_note.stderr.strip()}")
+                continue
+            default_note_dir = tmp_dir / "out" / theme / "note"
+            if not (default_note_dir / f"{theme}行业研究.md").is_file():
+                errors.append(f"{pack_name} default note output should be out/<theme>/note")
+
             note = subprocess.run(
                 [
                     sys.executable,

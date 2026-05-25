@@ -13,12 +13,15 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from a_share_output_paths import stage_dir
+
 ROOT = Path(__file__).resolve().parents[1]
 FETCHER = ROOT / "scripts/fetch_a_share_public_data.py"
 EVENTS_FETCHER = ROOT / "scripts/fetch_a_share_events_risks.py"
 MARKET_CONTEXT_FETCHER = ROOT / "scripts/fetch_a_share_market_context.py"
 MACRO_CONTEXT_FETCHER = ROOT / "scripts/fetch_a_share_macro_context.py"
 COMPANY_DETAILS_FETCHER = ROOT / "scripts/fetch_a_share_company_details.py"
+ANNUAL_REPORT_FETCHER = ROOT / "scripts/fetch_a_share_annual_reports.py"
 NORTHBOUND_MARGIN_FETCHER = ROOT / "scripts/fetch_a_share_northbound_margin.py"
 BOARD_SECTOR_FETCHER = ROOT / "scripts/fetch_a_share_board_sector.py"
 FUND_HOLDINGS_FETCHER = ROOT / "scripts/fetch_a_share_fund_holdings.py"
@@ -55,6 +58,8 @@ AUTO_OUTPUTS = [
     "market_context_stock_fund_flow.csv",
     "macro_context.csv",
     "company_details.csv",
+    "annual_reports.csv",
+    "annual_reports/",
     "northbound_flow.csv",
     "northbound_holdings.csv",
     "margin_trading.csv",
@@ -97,7 +102,10 @@ FIXTURE_CANDIDATES = [
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--theme", required=True, help="Chinese A-share theme or sector.")
-    parser.add_argument("--output-dir", required=True, help="Directory for the research-pack.")
+    parser.add_argument(
+        "--output-dir",
+        help="Directory for the research-pack. Defaults to out/<theme>/research-pack.",
+    )
     parser.add_argument("--as-of", required=True, help="Access date or quote timestamp.")
     parser.add_argument("--peer-universe", help="Optional existing peer_universe.csv.")
     parser.add_argument(
@@ -217,7 +225,15 @@ def write_csv(path: Path, rows: list[dict[str, Any]], fieldnames: list[str]) -> 
 
 
 def complete_research_pack(output_dir: Path) -> bool:
-    return all((output_dir / filename).is_file() for filename in AUTO_OUTPUTS)
+    for filename in AUTO_OUTPUTS:
+        path = output_dir / filename
+        if filename.endswith("/"):
+            if not path.is_dir():
+                return False
+        else:
+            if not path.is_file():
+                return False
+    return True
 
 
 def selected_value(row: dict[str, Any], names: list[str]) -> Any:
@@ -571,6 +587,25 @@ def run_company_details_fetcher(args: argparse.Namespace, peer_path: Path, outpu
     )
 
 
+def run_annual_report_fetcher(args: argparse.Namespace, peer_path: Path, output_dir: Path) -> None:
+    source = "fixture" if args.universe_source == "fixture" else "cninfo"
+    _run_optional_fetcher(
+        "fetch_a_share_annual_reports.py",
+        [
+            sys.executable,
+            str(ANNUAL_REPORT_FETCHER),
+            "--peer-universe",
+            str(peer_path),
+            "--output-dir",
+            str(output_dir),
+            "--as-of",
+            args.as_of,
+            "--source",
+            source,
+        ],
+    )
+
+
 def run_northbound_margin_fetcher(args: argparse.Namespace, output_dir: Path) -> None:
     _run_optional_fetcher(
         "fetch_a_share_northbound_margin.py",
@@ -649,7 +684,8 @@ def main() -> int:
     args = parse_args()
     if args.max_peers < 1:
         raise SystemExit("--max-peers must be positive")
-    output_dir = Path(args.output_dir)
+    output_dir = Path(args.output_dir) if args.output_dir else stage_dir(args.theme, "research-pack")
+    output_dir = output_dir.resolve()
     log_step(f"starting auto research-pack: theme={args.theme} output_dir={output_dir}")
     ensure_writable_output(output_dir, args.force)
 
@@ -673,6 +709,7 @@ def main() -> int:
     run_market_context_fetcher(args, output_dir)
     run_macro_context_fetcher(args, output_dir)
     run_company_details_fetcher(args, peer_path, output_dir)
+    run_annual_report_fetcher(args, peer_path, output_dir)
     run_northbound_margin_fetcher(args, output_dir)
     run_board_sector_fetcher(args, output_dir)
     run_fund_holdings_fetcher(args, peer_path, output_dir)

@@ -9,6 +9,8 @@ import zipfile
 from pathlib import Path
 from xml.sax.saxutils import escape
 
+from a_share_output_paths import workbook_path
+
 SHEETS = [
     ("Comps Main", "comps_main.csv"),
     ("Source Notes", "comps_source_notes.csv"),
@@ -22,7 +24,10 @@ SHEETS = [
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--comps-dir", required=True, help="Directory containing phase 5 comps artifacts.")
-    parser.add_argument("--output", required=True, help="Path to the XLSX workbook to write.")
+    parser.add_argument(
+        "--output",
+        help="Path to the XLSX workbook to write. Defaults to out/<theme>/workbook/<theme>可比公司.xlsx.",
+    )
     parser.add_argument("--theme", required=True, help="Chinese theme name for the summary sheet title.")
     return parser.parse_args()
 
@@ -161,7 +166,7 @@ def write_workbook(output: Path, sheets: list[tuple[str, list[list[str]]]]) -> N
 def main() -> int:
     args = parse_args()
     comps_dir = Path(args.comps_dir)
-    output = Path(args.output)
+    output = Path(args.output) if args.output else workbook_path(args.theme)
     sheets = load_sheet_rows(comps_dir, args.theme)
     write_workbook(output, sheets)
     print(f"wrote comps workbook: {output}")

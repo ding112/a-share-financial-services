@@ -201,7 +201,6 @@ python -m pip install -r requirements.txt
 ```bash
 .venv/bin/python scripts/auto_prepare_a_share_research_pack.py \
   --theme 机器人产业链 \
-  --output-dir out/机器人产业链/research-pack \
   --as-of 2026-05-22
 ```
 
@@ -243,7 +242,6 @@ out/机器人产业链/research-pack/events_and_risks.md
 ```bash
 python3 scripts/generate_a_share_comps_artifacts.py \
   --research-pack out/机器人产业链/research-pack \
-  --output-dir out/机器人产业链/comps \
   --theme 机器人产业链
 ```
 
@@ -263,7 +261,6 @@ out/机器人产业链/comps/comps_summary.md
 ```bash
 python3 scripts/generate_a_share_comps_workbook.py \
   --comps-dir out/机器人产业链/comps \
-  --output out/机器人产业链/workbook/机器人产业链可比公司.xlsx \
   --theme 机器人产业链
 ```
 
@@ -273,7 +270,6 @@ python3 scripts/generate_a_share_comps_workbook.py \
 python3 scripts/generate_a_share_research_handoff.py \
   --research-pack out/机器人产业链/research-pack \
   --comps-dir out/机器人产业链/comps \
-  --output-dir out/机器人产业链/handoff \
   --theme 机器人产业链
 ```
 
@@ -293,7 +289,6 @@ python3 scripts/generate_a_share_research_note.py \
   --research-pack out/机器人产业链/research-pack \
   --comps-dir out/机器人产业链/comps \
   --handoff-dir out/机器人产业链/handoff \
-  --output-dir out/机器人产业链/note \
   --theme 机器人产业链 \
   --angle 关注减速器国产替代和机器人量产弹性 \
   --as-of 2026-05-18

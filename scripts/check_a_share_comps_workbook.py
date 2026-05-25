@@ -110,12 +110,10 @@ def validate_comps_workbook() -> list[str]:
                     str(WORKBOOK_SCRIPT),
                     "--comps-dir",
                     str(comps_dir),
-                    "--output",
-                    str(workbook_path),
                     "--theme",
                     theme,
                 ],
-                cwd=ROOT,
+                cwd=tmp_dir,
                 check=False,
                 capture_output=True,
                 text=True,
@@ -123,8 +121,9 @@ def validate_comps_workbook() -> list[str]:
             if workbook.returncode != 0:
                 errors.append(f"workbook generation failed for {pack_name}: {workbook.stderr.strip()}")
                 continue
+            workbook_path = tmp_dir / "out" / theme / "workbook" / f"{theme}可比公司.xlsx"
             if not workbook_path.is_file():
-                errors.append(f"{pack_name} workbook output missing")
+                errors.append(f"{pack_name} default workbook output missing")
                 continue
 
             with zipfile.ZipFile(workbook_path) as archive:

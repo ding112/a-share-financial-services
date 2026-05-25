@@ -125,6 +125,30 @@ def validate_comps_generator() -> list[str]:
             fixture_pack = ROOT / "fixtures/a-share-research-packs" / pack_name
             topic_dir = Path(tmp) / theme
             output_dir = topic_dir / "comps"
+            default_smoke = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "--research-pack",
+                    str(fixture_pack),
+                    "--theme",
+                    theme,
+                ],
+                cwd=tmp,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            if default_smoke.returncode != 0:
+                errors.append(
+                    f"{SCRIPT.relative_to(ROOT)} default output smoke for {pack_name} "
+                    f"exited {default_smoke.returncode}: {default_smoke.stderr.strip()}"
+                )
+                continue
+            default_output_dir = Path(tmp) / "out" / theme / "comps"
+            if not (default_output_dir / "comps_summary.md").is_file():
+                errors.append(f"{pack_name} default comps output should be out/<theme>/comps")
+
             smoke = subprocess.run(
                 [
                     sys.executable,

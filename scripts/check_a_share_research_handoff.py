@@ -160,6 +160,32 @@ def validate_research_handoff() -> list[str]:
                 )
                 continue
 
+            default_handoff = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "--research-pack",
+                    str(pack_dir),
+                    "--comps-dir",
+                    str(comps_dir),
+                    "--theme",
+                    theme,
+                ],
+                cwd=tmp_dir,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            if default_handoff.returncode != 0:
+                errors.append(
+                    f"default handoff generation for {pack_name} exited "
+                    f"{default_handoff.returncode}: {default_handoff.stderr.strip()}"
+                )
+                continue
+            default_handoff_dir = tmp_dir / "out" / theme / "handoff"
+            if not (default_handoff_dir / "research_handoff_summary.md").is_file():
+                errors.append(f"{pack_name} default handoff output should be out/<theme>/handoff")
+
             handoff = subprocess.run(
                 [
                     sys.executable,

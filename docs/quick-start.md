@@ -141,7 +141,7 @@ a-share-market-researcher:a-share-market-researcher(
 ```bash
 python3 scripts/fetch_a_share_public_data.py \
   --peer-universe fixtures/a-share-research-packs/robotics-reducer/peer_universe.csv \
-  --output-dir out/robotics-reducer-public-data \
+  --output-dir out/机器人产业链/research-pack \
   --as-of "2026-05-21 15:00:00"
 ```
 
@@ -157,7 +157,7 @@ python3 scripts/fetch_a_share_public_data.py \
 ```bash
 python3 scripts/fetch_a_share_public_data.py \
   --peer-universe fixtures/a-share-research-packs/robotics-reducer/peer_universe.csv \
-  --output-dir out/robotics-reducer-public-data \
+  --output-dir out/机器人产业链/research-pack \
   --as-of "2026-05-21 15:00:00" \
   --market-source fixture \
   --financial-source fixture
@@ -171,7 +171,7 @@ python3 scripts/fetch_a_share_public_data.py \
 ```bash
 python3 scripts/prepare_a_share_research_pack.py \
   --input-dir fixtures/a-share-raw-exports/robotics-reducer \
-  --output-dir out/robotics-reducer-research-pack \
+  --output-dir out/机器人产业链/research-pack \
   --theme 机器人产业链 \
   --as-of 2026-05-17
 ```
@@ -181,7 +181,7 @@ python3 scripts/prepare_a_share_research_pack.py \
 ```text
 a-share-market-researcher:a-share-market-researcher(
   Primer: A股机器人产业链, angle: 减速器供给缺口。
-  使用 ./out/robotics-reducer-research-pack/ 作为 research-pack 输入。
+  使用 ./out/机器人产业链/research-pack/ 作为 research-pack 输入。
   先列出 source_manifest.json 中的来源、数据时间、报告期或口径和缺失行为。
 )
 ```
@@ -194,21 +194,19 @@ a-share-market-researcher:a-share-market-researcher(
 ```bash
 python3 scripts/generate_a_share_comps_artifacts.py \
   --research-pack fixtures/a-share-research-packs/robotics-reducer \
-  --output-dir out/robotics-reducer-comps \
   --theme 机器人产业链
 ```
 
 ```bash
 python3 scripts/generate_a_share_comps_workbook.py \
-  --comps-dir out/robotics-reducer-comps \
-  --output out/机器人产业链可比公司.xlsx \
+  --comps-dir out/机器人产业链/comps \
   --theme 机器人产业链
 ```
 
 成功输出：
 
 ```text
-wrote comps workbook: out/机器人产业链可比公司.xlsx
+wrote comps workbook: out/机器人产业链/workbook/机器人产业链可比公司.xlsx
 ```
 
 命令会写出以下文件：
@@ -237,8 +235,7 @@ wrote comps workbook: out/机器人产业链可比公司.xlsx
 ```bash
 python3 scripts/generate_a_share_research_handoff.py \
   --research-pack fixtures/a-share-research-packs/robotics-reducer \
-  --comps-dir out/robotics-reducer-comps \
-  --output-dir out/robotics-reducer-handoff \
+  --comps-dir out/机器人产业链/comps \
   --theme 机器人产业链
 ```
 
@@ -262,9 +259,8 @@ python3 scripts/generate_a_share_research_handoff.py \
 ```bash
 python3 scripts/generate_a_share_research_note.py \
   --research-pack fixtures/a-share-research-packs/robotics-reducer \
-  --comps-dir out/robotics-reducer-comps \
-  --handoff-dir out/robotics-reducer-handoff \
-  --output-dir out/robotics-reducer-note \
+  --comps-dir out/机器人产业链/comps \
+  --handoff-dir out/机器人产业链/handoff \
   --theme 机器人产业链 \
   --angle 关注减速器国产替代和机器人量产弹性 \
   --as-of 2026-05-18
@@ -273,13 +269,44 @@ python3 scripts/generate_a_share_research_note.py \
 成功输出：
 
 ```text
-wrote research note assembly: out/robotics-reducer-note
+wrote research note assembly: out/机器人产业链/note
 ```
 
 命令会写出以下文件：
 
 ```text
-out/robotics-reducer-note/机器人产业链行业研究.md
-out/robotics-reducer-note/机器人产业链路演大纲.md
-out/robotics-reducer-note/research_assembly_manifest.json
+out/机器人产业链/note/机器人产业链行业研究.md
+out/机器人产业链/note/机器人产业链路演大纲.md
+out/机器人产业链/note/research_assembly_manifest.json
 ```
+
+## 14) 生成 A 股 dashboard
+
+当同一主题目录下已经有 `research-pack/`、`comps/`、`handoff/` 和 `note/`
+产物时，可以生成一个离线可打开的静态 HTML 看板。Dashboard 只读取本地文件，
+不会联网，也不会修改原始研究产物。
+
+```bash
+python3 scripts/generate_a_share_dashboard.py \
+  --theme 机器人产业链 \
+  --research-pack out/机器人产业链/research-pack \
+  --comps-dir out/机器人产业链/comps \
+  --handoff-dir out/机器人产业链/handoff \
+  --note-dir out/机器人产业链/note
+```
+
+成功输出：
+
+```text
+wrote A-share dashboard: out/机器人产业链/dashboard/index.html
+```
+
+看板包含以下区块：
+
+- 总览：主题、股票数量、数据质量和生成时间。
+- 股票池：代码、简称、主题角色、研究优先级、风险摘要和失效条件。
+- Comps：市值、PE、PB、PS、短期表现、收入、净利和 ROE。
+- 图表区：`PE TTM vs ROE` 和 `市值 vs 20 日表现` 两个基础散点图。
+- 风险与来源：风险登记、数据缺口、异常项、source manifest 和 note 链接。
+
+Dashboard 是研究复核工具，不输出买入、卖出、目标价或收益承诺。

@@ -92,6 +92,35 @@ def validate_auto_prepare() -> list[str]:
             errors.append(f"{SCRIPT.relative_to(ROOT)} --help missing {token}")
 
     with tempfile.TemporaryDirectory() as tmp:
+        default_smoke = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPT),
+                "--theme",
+                "机器人产业链",
+                "--as-of",
+                "2026-05-22",
+                "--universe-source",
+                "fixture",
+                "--market-source",
+                "fixture",
+                "--financial-source",
+                "fixture",
+            ],
+            cwd=tmp,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if default_smoke.returncode != 0:
+            errors.append(
+                f"{SCRIPT.relative_to(ROOT)} default output smoke exited "
+                f"{default_smoke.returncode}: {default_smoke.stderr.strip()}"
+            )
+        default_output_dir = Path(tmp) / "out" / "机器人产业链" / "research-pack"
+        if not (default_output_dir / "auto_prepare_manifest.json").is_file():
+            errors.append("auto prepare default output should be out/<theme>/research-pack")
+
         output_dir = Path(tmp) / "机器人产业链" / "research-pack"
         smoke = subprocess.run(
             [

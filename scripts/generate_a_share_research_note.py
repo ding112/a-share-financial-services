@@ -9,6 +9,8 @@ import json
 import re
 from pathlib import Path
 
+from a_share_output_paths import stage_dir
+
 MISSING = "来源缺失"
 
 
@@ -17,7 +19,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--research-pack", required=True, help="Directory containing research-pack files.")
     parser.add_argument("--comps-dir", required=True, help="Directory containing phase 5 comps artifacts.")
     parser.add_argument("--handoff-dir", required=True, help="Directory containing phase 6 handoff artifacts.")
-    parser.add_argument("--output-dir", required=True, help="Directory where note assembly files are written.")
+    parser.add_argument(
+        "--output-dir",
+        help="Directory where note assembly files are written. Defaults to out/<theme>/note.",
+    )
     parser.add_argument("--theme", required=True, help="Chinese theme name for output filenames.")
     parser.add_argument("--angle", default="主题 primer", help="Research angle shown in the note.")
     parser.add_argument("--as-of", default="未指定", help="As-of date shown in the note and manifest.")
@@ -372,7 +377,7 @@ def main() -> int:
     research_pack = Path(args.research_pack)
     comps_dir = Path(args.comps_dir)
     handoff_dir = Path(args.handoff_dir)
-    output_dir = Path(args.output_dir)
+    output_dir = Path(args.output_dir) if args.output_dir else stage_dir(args.theme, "note")
     output_dir.mkdir(parents=True, exist_ok=True)
 
     inputs = load_research_inputs(research_pack, comps_dir, handoff_dir)

@@ -8,6 +8,8 @@ import csv
 import re
 from pathlib import Path
 
+from a_share_output_paths import stage_dir
+
 MISSING = "来源缺失"
 
 COMPETITIVE_FIELDS = [
@@ -62,7 +64,10 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--research-pack", required=True, help="Directory containing research-pack files.")
     parser.add_argument("--comps-dir", required=True, help="Directory containing phase 5 comps artifacts.")
-    parser.add_argument("--output-dir", required=True, help="Directory where handoff files are written.")
+    parser.add_argument(
+        "--output-dir",
+        help="Directory where handoff files are written. Defaults to out/<theme>/handoff.",
+    )
     parser.add_argument("--theme", required=True, help="Chinese theme name for summary output.")
     return parser.parse_args()
 
@@ -330,7 +335,7 @@ def main() -> int:
     args = parse_args()
     pack_dir = Path(args.research_pack)
     comps_dir = Path(args.comps_dir)
-    output_dir = Path(args.output_dir)
+    output_dir = Path(args.output_dir) if args.output_dir else stage_dir(args.theme, "handoff")
     output_dir.mkdir(parents=True, exist_ok=True)
 
     peers = read_csv(pack_dir / "peer_universe.csv")
