@@ -1,5 +1,26 @@
 # Claude for Financial Services
 
+## 快速使用
+
+从 GitHub 检出仓库后，安装 A 股 Market Researcher：
+
+```bash
+git clone https://github.com/ding112/a-share-financial-services.git
+cd a-share-financial-services
+git checkout main
+claude plugin marketplace add .
+claude plugin install a-share-market-researcher@claude-for-financial-services
+```
+
+安装后直接调用 A 股 Market Researcher：
+
+```text
+a-share-market-researcher:a-share-market-researcher(
+  Primer: A股机器人产业链, angle: 减速器供给缺口。
+  生成结果保存到 ./out/机器人产业链行业研究.md
+)
+```
+
 面向股票研究、A 股交易研究和投行建模工作流的参考 agents、skills 和数据
 连接器集合。
 
@@ -56,16 +77,14 @@ scripts/                       # 部署、校验、编排和同步脚本
 
 ### Cowork
 
-在 Cowork 中打开 **Settings -> Plugins -> Add plugin**，然后选择一种方式：
+在 Cowork 中打开 **Settings -> Plugins -> Add plugin**，上传本地插件 zip。
 
-- 粘贴仓库 URL：`https://github.com/anthropics/claude-for-financial-services`，
-  再从 marketplace 列表中选择需要的 agents 和 vertical plugins。
-- 上传 zip：将 `plugins/` 下任意插件目录打包，例如
-  `plugins/agent-plugins/pitch-agent/`，再上传。
+将 `plugins/` 下任意插件目录打包，例如
+`plugins/agent-plugins/pitch-agent/`，再上传。
 
 ### Claude Code
 
-本地使用 `a-share-screener` 的安装和调用方式见
+本地使用 `a-share-market-researcher` 的安装和调用方式见
 [docs/quick-start.md](./docs/quick-start.md)。
 
 `a-share-market-researcher` 的自动 `research-pack` 准备流程需要本地 Python
@@ -82,21 +101,11 @@ python -m pip install -r requirements.txt
 运行受控本地脚本；不会自动安装依赖，也不会运行未列出的抓取脚本。
 
 ```bash
-# 添加 marketplace
-claude plugin marketplace add anthropics/claude-for-financial-services
+# 添加本地 marketplace
+claude plugin marketplace add .
 
-# 先安装核心建模能力和连接器
-claude plugin install financial-analysis@claude-for-financial-services
-
-# 按需安装命名 agents
-claude plugin install pitch-agent@claude-for-financial-services
-claude plugin install a-share-screener@claude-for-financial-services
+# 安装 A 股 Market Researcher
 claude plugin install a-share-market-researcher@claude-for-financial-services
-claude plugin install market-researcher@claude-for-financial-services
-
-# 按需安装 vertical skill bundles
-claude plugin install investment-banking@claude-for-financial-services
-claude plugin install equity-research@claude-for-financial-services
 ```
 
 安装后，agents 会出现在 Cowork dispatch 中；skills 会在相关任务中自动触发；
