@@ -6,10 +6,9 @@ from __future__ import annotations
 import argparse
 import csv
 import json
-import re
 from pathlib import Path
 
-from a_share_output_paths import stage_dir
+from a_share_output_paths import safe_filename, stage_dir
 
 MISSING = "来源缺失"
 
@@ -41,11 +40,6 @@ def read_text_file(path: Path) -> str:
         return MISSING
     text = path.read_text(encoding="utf-8").strip()
     return text if text else MISSING
-
-
-def safe_filename(value: str) -> str:
-    cleaned = re.sub(r"[\\/:*?\"<>|]+", "", value).strip()
-    return cleaned or "A股主题"
 
 
 def clean_value(value: str | None) -> str:

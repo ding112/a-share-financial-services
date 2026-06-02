@@ -24,7 +24,7 @@ REQUIRED_TOKENS = [
     "def parse_args",
     "def read_csv",
     "def read_text_file",
-    "def safe_filename",
+    "safe_filename(args.theme)",
     "def load_research_inputs",
     "def short_performance_summary",
     "def build_note",
@@ -165,6 +165,41 @@ def validate_research_note() -> list[str]:
             default_note_dir = tmp_dir / "out" / theme / "note"
             if not (default_note_dir / f"{theme}行业研究.md").is_file():
                 errors.append(f"{pack_name} default note output should be out/<theme>/note")
+
+            if pack_name == "cpo-optical-module":
+                slash_theme = "CPO/光模块"
+                slash_note = subprocess.run(
+                    [
+                        sys.executable,
+                        str(NOTE_SCRIPT),
+                        "--research-pack",
+                        str(pack_dir),
+                        "--comps-dir",
+                        str(comps_dir),
+                        "--handoff-dir",
+                        str(handoff_dir),
+                        "--theme",
+                        slash_theme,
+                        "--angle",
+                        angle,
+                        "--as-of",
+                        "2026-05-18",
+                    ],
+                    cwd=tmp_dir,
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                )
+                if slash_note.returncode != 0:
+                    errors.append(f"slash theme note assembly failed: {slash_note.stderr.strip()}")
+                slash_note_dir = tmp_dir / "out" / "CPO" / "光模块" / "note"
+                for slash_output in [
+                    slash_note_dir / "CPO光模块行业研究.md",
+                    slash_note_dir / "CPO光模块路演大纲.md",
+                    slash_note_dir / "research_assembly_manifest.json",
+                ]:
+                    if not slash_output.is_file():
+                        errors.append(f"slash theme note output missing {slash_output.relative_to(tmp_dir)}")
 
             note = subprocess.run(
                 [
