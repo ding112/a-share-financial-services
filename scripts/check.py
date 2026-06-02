@@ -30,6 +30,7 @@ from check_a_share_comps_workbook import validate_comps_workbook  # noqa: E402
 from check_a_share_research_handoff import validate_research_handoff  # noqa: E402
 from check_a_share_research_note import validate_research_note  # noqa: E402
 from check_a_share_dashboard import validate_dashboard  # noqa: E402
+from check_a_share_output_layout import validate_output_layout  # noqa: E402
 from check_a_share_research_pack_fixtures import validate_fixtures  # noqa: E402
 from check_a_share_research_pack_prep import validate_prep_script  # noqa: E402
 from check_a_share_public_data_fetcher import validate_public_data_fetcher  # noqa: E402
@@ -271,6 +272,9 @@ for note_error in validate_research_note():
 
 for dashboard_error in validate_dashboard():
     err(dashboard_error)
+
+for output_layout_error in validate_output_layout():
+    err(output_layout_error)
 
 # --- report ----------------------------------------------------------------
 if errors:

@@ -3,11 +3,17 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 
 def topic_name(theme: str) -> str:
     cleaned = theme.strip()
+    return cleaned or "A股主题"
+
+
+def safe_filename(value: str) -> str:
+    cleaned = re.sub(r"[\\/:*?\"<>|]+", "", value).strip()
     return cleaned or "A股主题"
 
 

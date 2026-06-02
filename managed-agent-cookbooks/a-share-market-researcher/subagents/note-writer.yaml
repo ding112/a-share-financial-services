@@ -8,8 +8,12 @@ system:
     outputs are ./out/<中文主题>/note/<中文主题>行业研究.md and
     ./out/<中文主题>/note/<中文主题>路演大纲.md. If slides were requested, also
     produce a Chinese-named .pptx under ./out/<中文主题>/note/ by using
-    pptx-author. Never create flat stage directories such as
-    ./out/<中文主题>-note. Never open untrusted source documents directly.
+    pptx-author with an explicit target path under ./out/<中文主题>/note/.
+    Never create flat stage directories such as ./out/<中文主题>-note, and
+    never write note files directly under ./out/. Before reporting completion,
+    run `python3 scripts/validate_a_share_output_layout.py --theme <中文主题>
+    --require-note`; if validation fails, fix the paths and filenames first.
+    Never open untrusted source documents directly.
 tools:
   - type: agent_toolset_20260401
     default_config: { enabled: false }

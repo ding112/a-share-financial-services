@@ -17,9 +17,12 @@ claude plugin install a-share-market-researcher@claude-for-financial-services
 ```text
 a-share-market-researcher:a-share-market-researcher(
   Primer: A股机器人产业链, angle: 减速器供给缺口。
-  生成结果保存到 ./out/机器人产业链行业研究.md
+  生成结果保存到 ./out/机器人产业链/note/。
 )
 ```
+
+默认研究笔记输出为 `./out/机器人产业链/note/机器人产业链行业研究.md`，
+路演大纲输出为 `./out/机器人产业链/note/机器人产业链路演大纲.md`。
 
 面向股票研究、A 股交易研究和投行建模工作流的参考 agents、skills 和数据
 连接器集合。
@@ -75,13 +78,6 @@ scripts/                       # 部署、校验、编排和同步脚本
 
 ## 快速开始
 
-### Cowork
-
-在 Cowork 中打开 **Settings -> Plugins -> Add plugin**，上传本地插件 zip。
-
-将 `plugins/` 下任意插件目录打包，例如
-`plugins/agent-plugins/pitch-agent/`，再上传。
-
 ### Claude Code
 
 本地使用 `a-share-market-researcher` 的安装和调用方式见
@@ -108,9 +104,8 @@ claude plugin marketplace add .
 claude plugin install a-share-market-researcher@claude-for-financial-services
 ```
 
-安装后，agents 会出现在 Cowork dispatch 中；skills 会在相关任务中自动触发；
-slash commands 可以在会话中直接调用，例如 `/comps`、`/dcf`、`/earnings`、
-`/screen`。
+安装后，`a-share-market-researcher` 可以在会话中直接调用；相关 skills 会在
+A 股研究任务中自动触发。
 
 ### Claude Managed Agents
 

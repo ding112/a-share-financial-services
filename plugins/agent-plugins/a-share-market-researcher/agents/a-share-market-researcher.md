@@ -32,6 +32,9 @@ tools: Read, Write, Edit, Bash
    `./out/<中文主题>/note/<中文主题>行业研究.md` 和
    `./out/<中文主题>/note/<中文主题>路演大纲.md`。只有用户明确要求 slides
    时，才继续调用 `pptx-author` 生成 PPTX。
+8. **Validate the local layout.** 写入本地文件后，运行
+   `python3 scripts/validate_a_share_output_layout.py --theme <中文主题> --require-note`
+   校验输出目录；如果失败，先修正路径和文件名，再向用户报告完成。
 
 ## Guardrails
 
@@ -56,6 +59,9 @@ tools: Read, Write, Edit, Bash
   `./out/<中文主题>-comps`、`./out/<中文主题>-handoff` 或
   `./out/<中文主题>-note` 这类平铺阶段目录。
 - 生成研究笔记后必须写入本地 Markdown 文件；如果用户没有指定路径，默认保存到 `./out/<中文主题>/note/`，文件名必须使用中文主题名，不使用英文占位名。
+- 报告完成前必须运行
+  `python3 scripts/validate_a_share_output_layout.py --theme <中文主题> --require-note`；
+  校验失败时不得声称完成。
 - 本 Agent 只负责起草研究材料，不负责发布、分发或下单。
 
 ## Skills this agent uses
