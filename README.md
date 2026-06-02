@@ -44,13 +44,41 @@ a-share-market-researcher:a-share-market-researcher(
 ./out/机器人产业链/note/机器人产业链路演大纲.md
 ```
 
-如果你希望 agent 自动准备公开数据包，再创建本地 Python 环境：
+### 抓取公开数据跑研究
+
+如果你希望用公开数据源准备 `research-pack/`，不需要手动运行数据准备脚本。
+先创建本地 Python 环境并安装依赖：
 
 ```bash
 python3 -m venv .venv
 . .venv/bin/activate
 python -m pip install -r requirements.txt
 ```
+
+然后在 Claude Code 会话里直接调用 agent。Agent 内置的
+`a-share-data-sources` skill 会在缺少 `research-pack/` 时自动准备数据包：
+
+```text
+a-share-market-researcher:a-share-market-researcher(
+  Primer: A股机器人产业链, angle: 减速器供给缺口。
+  如果本地还没有 research-pack，请自动准备公开数据 research-pack；
+  先列出 source_manifest.json 中的来源、数据时间、报告期或口径和缺失行为，
+  再生成中文研究 note。
+  生成结果保存到 ./out/机器人产业链/note/。
+)
+```
+
+这个流程会联网访问公开数据源。成功后，你会看到以下文件：
+
+```text
+./out/机器人产业链/research-pack/source_manifest.json
+./out/机器人产业链/research-pack/peer_universe.csv
+./out/机器人产业链/note/机器人产业链行业研究.md
+./out/机器人产业链/note/机器人产业链路演大纲.md
+```
+
+如果公开数据源暂时不可用，先检查
+`./out/机器人产业链/research-pack/fetch_errors.csv`。
 
 更完整的本地测试、fixture 冒烟测试和公开数据准备流程见
 [`docs/quick-start.md`](./docs/quick-start.md)。
