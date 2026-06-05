@@ -1,0 +1,22 @@
+{
+  "name": "pitch-agent",
+  "version": "0.1.0",
+  "description": "Comps, precedents, LBO to a branded pitch deck, end to end",
+  "author": {
+    "name": "Anthropic FSI"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Pitch Agent",
+    "shortDescription": "Build pitch materials from models and analysis.",
+    "longDescription": "Installs pitch workflow skills for company research, comps, LBO and DCF support, deck refresh, and PowerPoint authoring.",
+    "developerName": "Anthropic FSI",
+    "category": "Finance",
+    "capabilities": [
+      "Skills"
+    ],
+    "defaultPrompt": [
+      "Build a pitch deck workflow."
+    ]
+  }
+}

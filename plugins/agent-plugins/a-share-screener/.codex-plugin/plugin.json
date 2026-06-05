@@ -1,0 +1,22 @@
+{
+  "name": "a-share-screener",
+  "version": "0.1.0",
+  "description": "A-share topic, event, quant, and risk screening workflow for short-term research",
+  "author": {
+    "name": "Anthropic FSI"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "A-share Screener",
+    "shortDescription": "Screen A-share topics, events, quant signals, and risks.",
+    "longDescription": "Installs the A-share screening skills used for short-term topic screens, daily briefs, event calendars, quant screens, and risk checks.",
+    "developerName": "Anthropic FSI",
+    "category": "Finance",
+    "capabilities": [
+      "Skills"
+    ],
+    "defaultPrompt": [
+      "Screen an A-share theme."
+    ]
+  }
+}

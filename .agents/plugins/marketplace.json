@@ -1,0 +1,92 @@
+{
+  "name": "financial-services",
+  "interface": {
+    "displayName": "Financial Services"
+  },
+  "plugins": [
+    {
+      "name": "a-share-market-researcher",
+      "source": {
+        "source": "local",
+        "path": "./plugins/agent-plugins/a-share-market-researcher"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Finance"
+    },
+    {
+      "name": "a-share-screener",
+      "source": {
+        "source": "local",
+        "path": "./plugins/agent-plugins/a-share-screener"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Finance"
+    },
+    {
+      "name": "earnings-reviewer",
+      "source": {
+        "source": "local",
+        "path": "./plugins/agent-plugins/earnings-reviewer"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Finance"
+    },
+    {
+      "name": "market-researcher",
+      "source": {
+        "source": "local",
+        "path": "./plugins/agent-plugins/market-researcher"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Finance"
+    },
+    {
+      "name": "model-builder",
+      "source": {
+        "source": "local",
+        "path": "./plugins/agent-plugins/model-builder"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Finance"
+    },
+    {
+      "name": "pitch-agent",
+      "source": {
+        "source": "local",
+        "path": "./plugins/agent-plugins/pitch-agent"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Finance"
+    },
+    {
+      "name": "equity-research",
+      "source": {
+        "source": "local",
+        "path": "./plugins/vertical-plugins/equity-research"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Finance"
+    }
+  ]
+}

@@ -10,6 +10,8 @@ Checks:
      and subagent yamls resolves to an existing file/dir.
   5. Every managed-agents/<slug>/ has agent.yaml, README.md, steering-examples.json.
   6. Text files do not use <agent-plugin-slug>:<bundled-skill> as an agent type.
+  7. Every Codex-exposed plugin has a matching Codex plugin manifest.
+  8. The Codex marketplace only exposes approved skill-package plugins.
 
 Exit 0 if clean, 1 otherwise. Requires: pyyaml.
 """
@@ -59,6 +61,35 @@ def rel(p: Path) -> str:
     return str(p.relative_to(ROOT))
 
 
+def read_json(path: Path) -> dict:
+    try:
+        payload = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError) as e:
+        err(f"JSON read: {rel(path)}: {e}")
+        return {}
+    if not isinstance(payload, dict):
+        err(f"JSON shape: {rel(path)}: expected object")
+        return {}
+    return payload
+
+
+def version_base(raw: object) -> str | None:
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+    return raw.split("+", 1)[0]
+
+
+def agent_plugin_dirs() -> list[Path]:
+    root = PLUGINS / "agent-plugins"
+    return sorted(p for p in root.iterdir() if p.is_dir() and not p.name.startswith("."))
+
+
+def approved_codex_plugin_dirs() -> dict[str, Path]:
+    plugins = {p.name: p for p in agent_plugin_dirs()}
+    plugins["equity-research"] = PLUGINS / "vertical-plugins" / "equity-research"
+    return plugins
+
+
 # --- 1. YAML parse ----------------------------------------------------------
 for yml in sorted(MANAGED.rglob("*.yaml")):
     checked += 1
@@ -71,7 +102,9 @@ for yml in sorted(MANAGED.rglob("*.yaml")):
 # --- 2. JSON parse ----------------------------------------------------------
 json_globs = [
     ".claude-plugin/marketplace.json",
+    ".agents/plugins/marketplace.json",
     "plugins/**/.claude-plugin/plugin.json",
+    "plugins/**/.codex-plugin/plugin.json",
     "managed-agent-cookbooks/*/steering-examples.json",
 ]
 for pat in json_globs:
@@ -220,6 +253,115 @@ for p in json.loads(mp.read_text()).get("plugins", []):
     src = (ROOT / p["source"]).resolve()
     if not (src / ".claude-plugin" / "plugin.json").is_file():
         err(f"marketplace: {p['name']} source -> {p['source']} (no plugin.json)")
+
+# --- 4d. Codex plugin manifests match approved skill packages --------------
+CODEX_FORBIDDEN_FIELDS = {"agents", "apps", "commands", "hooks", "mcpServers"}
+
+for plugin_name, plugin_dir in approved_codex_plugin_dirs().items():
+    claude_manifest_path = plugin_dir / ".claude-plugin" / "plugin.json"
+    codex_manifest_path = plugin_dir / ".codex-plugin" / "plugin.json"
+    if not claude_manifest_path.is_file():
+        err(f"codex-manifest: {rel(plugin_dir)}: missing .claude-plugin/plugin.json")
+        continue
+    if not codex_manifest_path.is_file():
+        err(f"codex-manifest: {rel(plugin_dir)}: missing .codex-plugin/plugin.json")
+        continue
+
+    claude_manifest = read_json(claude_manifest_path)
+    codex_manifest = read_json(codex_manifest_path)
+    if codex_manifest.get("name") != plugin_name:
+        err(f"codex-manifest: {rel(codex_manifest_path)}: name must match plugin dir")
+    for field in ("name", "description"):
+        if codex_manifest.get(field) != claude_manifest.get(field):
+            err(
+                f"codex-manifest: {rel(codex_manifest_path)}: {field} does not match "
+                f"{rel(claude_manifest_path)}"
+            )
+
+    if version_base(codex_manifest.get("version")) != version_base(claude_manifest.get("version")):
+        err(
+            f"codex-manifest: {rel(codex_manifest_path)}: version base does not match "
+            f"{rel(claude_manifest_path)}"
+        )
+
+    forbidden = sorted(CODEX_FORBIDDEN_FIELDS.intersection(codex_manifest))
+    if forbidden:
+        err(
+            f"codex-manifest: {rel(codex_manifest_path)}: Codex skill package v1 must not "
+            f"declare {', '.join(forbidden)}"
+        )
+
+    if codex_manifest.get("skills") != "./skills/":
+        err(f"codex-manifest: {rel(codex_manifest_path)}: skills must be './skills/'")
+    if not (plugin_dir / "skills").is_dir():
+        err(f"codex-manifest: {rel(plugin_dir)}: skills field present but skills/ is missing")
+
+    interface = codex_manifest.get("interface")
+    if not isinstance(interface, dict):
+        err(f"codex-manifest: {rel(codex_manifest_path)}: interface must be an object")
+        continue
+    if interface.get("category") != "Finance":
+        err(f"codex-manifest: {rel(codex_manifest_path)}: interface.category must be Finance")
+    capabilities = interface.get("capabilities")
+    if not isinstance(capabilities, list) or "Skills" not in capabilities:
+        err(f"codex-manifest: {rel(codex_manifest_path)}: interface.capabilities must include Skills")
+
+# --- 4e. Codex marketplace source paths resolve ----------------------------
+codex_mp = ROOT / ".agents" / "plugins" / "marketplace.json"
+codex_marketplace = read_json(codex_mp)
+if codex_marketplace:
+    if codex_marketplace.get("name") != "financial-services":
+        err("codex-marketplace: .agents/plugins/marketplace.json: name must be financial-services")
+
+    expected_plugins = set(approved_codex_plugin_dirs())
+    entries = codex_marketplace.get("plugins")
+    if not isinstance(entries, list):
+        err("codex-marketplace: .agents/plugins/marketplace.json: plugins must be an array")
+        entries = []
+    seen_plugins: set[str] = set()
+    for entry in entries:
+        if not isinstance(entry, dict):
+            err("codex-marketplace: .agents/plugins/marketplace.json: plugin entry must be an object")
+            continue
+        name = entry.get("name")
+        if not isinstance(name, str):
+            err("codex-marketplace: .agents/plugins/marketplace.json: plugin entry missing name")
+            continue
+        seen_plugins.add(name)
+        if name not in expected_plugins:
+            err(f"codex-marketplace: {name}: only approved skill packages may be registered in v1")
+
+        source = entry.get("source")
+        if not isinstance(source, dict) or source.get("source") != "local":
+            err(f"codex-marketplace: {name}: source must be a local source object")
+            continue
+        raw_path = source.get("path")
+        if not isinstance(raw_path, str):
+            err(f"codex-marketplace: {name}: source.path must be a string")
+            continue
+        src = (ROOT / raw_path).resolve()
+        if not (src / ".codex-plugin" / "plugin.json").is_file():
+            err(f"codex-marketplace: {name}: source.path -> {raw_path} (no Codex plugin.json)")
+        if src.name != name:
+            err(f"codex-marketplace: {name}: source.path must point to matching plugin dir")
+
+        policy = entry.get("policy")
+        if not isinstance(policy, dict):
+            err(f"codex-marketplace: {name}: policy must be an object")
+        else:
+            if policy.get("installation") != "AVAILABLE":
+                err(f"codex-marketplace: {name}: policy.installation must be AVAILABLE")
+            if policy.get("authentication") != "ON_INSTALL":
+                err(f"codex-marketplace: {name}: policy.authentication must be ON_INSTALL")
+        if entry.get("category") != "Finance":
+            err(f"codex-marketplace: {name}: category must be Finance")
+
+    missing = sorted(expected_plugins - seen_plugins)
+    extra = sorted(seen_plugins - expected_plugins)
+    if missing:
+        err(f"codex-marketplace: missing plugin entries: {', '.join(missing)}")
+    if extra:
+        err(f"codex-marketplace: unexpected plugin entries: {', '.join(extra)}")
 
 # --- 5. required files per managed-agent -----------------------------------
 for d in sorted(MANAGED.iterdir()):

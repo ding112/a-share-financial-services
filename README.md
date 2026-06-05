@@ -1,8 +1,8 @@
 # Claude for Financial Services
 
-这是一个面向金融服务工作流的 Claude 插件和 Managed Agent 模板仓库。它把
-金融分析、A 股研究、投行材料、模型构建和合作伙伴数据能力整理成可安装的
-插件，并为部分工作流提供无界面部署模板。
+这是一个面向金融服务工作流的 Claude Code 插件、Codex agent 能力包和
+Managed Agent 模板仓库。它把金融分析、A 股研究、投行材料、模型构建和
+合作伙伴数据能力整理成可安装的插件，并为部分工作流提供无界面部署模板。
 
 第一次接触这个项目时，只需要先理解两件事：
 
@@ -14,6 +14,18 @@
 > 成果，所有输出都需要合格专业人员复核。Agents 不提供投资建议，不执行交易，
 > 不绑定风险，不入账，也不批准客户准入。
 
+## 术语
+
+本仓库同时服务多个运行时。以下术语用于区分安装入口、能力来源和部署模板。
+
+| 术语 | 含义 |
+|---|---|
+| Claude Code plugin | Claude Code / Cowork 读取的插件包，由 `.claude-plugin/plugin.json` 和 `.claude-plugin/marketplace.json` 注册。 |
+| Codex plugin | Codex 读取的本地插件包，由 `.codex-plugin/plugin.json` 和 `.agents/plugins/marketplace.json` 注册。第一版暴露 agent plugin 中的 skills，并额外暴露 `equity-research` skill package。 |
+| Agent plugin | `plugins/agent-plugins/<slug>/` 下的端到端工作流入口，包含 agent system prompt 和同步后的 skills。 |
+| Vertical plugin | `plugins/vertical-plugins/<vertical>/` 下的领域能力源，包含原始 skills、Claude Code commands 和可选 MCP 配置。 |
+| Managed Agent template | `managed-agent-cookbooks/<slug>/` 下的无界面部署模板，复用 agent plugin 的 system prompt 和 skills。 |
+
 ## 先跑一个 case
 
 最快的上手方式是安装 `a-share-market-researcher`，用仓库里的 fixture 数据包
@@ -22,7 +34,7 @@
 ```bash
 git clone https://github.com/ding112/a-share-financial-services.git
 cd a-share-financial-services
-claude plugin marketplace add .
+claude plugin marketplace add ./
 claude plugin install a-share-market-researcher@claude-for-financial-services
 ```
 
@@ -123,7 +135,9 @@ docs/                        # 更细的本地使用说明
 | `pitch-agent` | 从可比公司、交易先例和 LBO 到 pitch deck |
 
 完整插件清单由 [`.claude-plugin/marketplace.json`](./.claude-plugin/marketplace.json)
-注册。
+注册。Codex 第一版注册 `plugins/agent-plugins/` 下的 agent 能力包，并额外注册
+`equity-research` skill package；清单见
+[`.agents/plugins/marketplace.json`](./.agents/plugins/marketplace.json)。
 
 ## 开发和校验
 
@@ -132,10 +146,14 @@ docs/                        # 更细的本地使用说明
 
 - 修改 skill：优先编辑 `plugins/vertical-plugins/<vertical>/skills/`。
 - 同步 agent bundle：运行 `python3 scripts/sync-agent-skills.py`。
+- 修改 Codex manifest：优先改 `plugins/agent-plugins/<slug>/.codex-plugin/plugin.json`。
+  `equity-research` 是第一版唯一允许进入 Codex marketplace 的 vertical skill
+  package，用于暴露 `initiating-coverage` 等 skills；不要把其它 vertical plugin
+  加入 Codex marketplace。
 - 提交前校验：运行 `python3 scripts/check.py`。
 
-`scripts/check.py` 会检查 manifests、跨文件引用、Managed Agent 模板和 agent
-bundle skill 是否与 vertical source 保持一致。
+`scripts/check.py` 会检查 manifests、跨文件引用、Managed Agent 模板、Codex
+marketplace，以及 agent bundle skill 是否与 vertical source 保持一致。
 
 ## 许可证
 

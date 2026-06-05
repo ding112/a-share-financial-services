@@ -1,0 +1,22 @@
+{
+  "name": "a-share-market-researcher",
+  "version": "0.1.0",
+  "description": "A-share sector or theme to industry overview, competitive landscape, peer comps, and ideas shortlist",
+  "author": {
+    "name": "Anthropic FSI"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "A-share Market Researcher",
+    "shortDescription": "Build A-share sector and theme research packs.",
+    "longDescription": "Installs the A-share market research skills used for industry overviews, competitive analysis, peer comps, and Chinese research note drafting.",
+    "developerName": "Anthropic FSI",
+    "category": "Finance",
+    "capabilities": [
+      "Skills"
+    ],
+    "defaultPrompt": [
+      "Research an A-share sector or theme."
+    ]
+  }
+}

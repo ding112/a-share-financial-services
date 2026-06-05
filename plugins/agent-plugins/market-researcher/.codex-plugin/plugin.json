@@ -1,0 +1,22 @@
+{
+  "name": "market-researcher",
+  "version": "0.1.0",
+  "description": "Sector or theme to industry overview, competitive landscape, peer comps, and ideas shortlist",
+  "author": {
+    "name": "Anthropic FSI"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Market Researcher",
+    "shortDescription": "Build sector and theme research packs.",
+    "longDescription": "Installs market research skills for sector overviews, competitive analysis, peer comps, idea generation, and optional slide outlines.",
+    "developerName": "Anthropic FSI",
+    "category": "Finance",
+    "capabilities": [
+      "Skills"
+    ],
+    "defaultPrompt": [
+      "Research a sector or theme."
+    ]
+  }
+}

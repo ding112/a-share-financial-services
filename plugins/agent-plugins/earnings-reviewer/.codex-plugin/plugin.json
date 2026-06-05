@@ -1,0 +1,22 @@
+{
+  "name": "earnings-reviewer",
+  "version": "0.1.0",
+  "description": "Earnings call and filings to model update to note draft",
+  "author": {
+    "name": "Anthropic FSI"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Earnings Reviewer",
+    "shortDescription": "Review earnings materials and draft model-update notes.",
+    "longDescription": "Installs earnings review skills for preview work, filings and call analysis, model updates, morning notes, and spreadsheet review.",
+    "developerName": "Anthropic FSI",
+    "category": "Finance",
+    "capabilities": [
+      "Skills"
+    ],
+    "defaultPrompt": [
+      "Review an earnings report."
+    ]
+  }
+}

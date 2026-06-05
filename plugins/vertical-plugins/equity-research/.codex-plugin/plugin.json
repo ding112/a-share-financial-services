@@ -1,0 +1,22 @@
+{
+  "name": "equity-research",
+  "version": "0.1.0",
+  "description": "Equity research tools: earnings analysis, initiating coverage reports, and research workflows",
+  "author": {
+    "name": "Anthropic FSI"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Equity Research",
+    "shortDescription": "Use equity research workflows and report-writing skills.",
+    "longDescription": "Installs equity research skills for initiating coverage, earnings analysis, model updates, sector overviews, catalysts, thesis tracking, and morning notes. Claude Code slash commands remain available only through the Claude Code plugin path.",
+    "developerName": "Anthropic FSI",
+    "category": "Finance",
+    "capabilities": [
+      "Skills"
+    ],
+    "defaultPrompt": [
+      "Create an initiating coverage report."
+    ]
+  }
+}

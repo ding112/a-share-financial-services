@@ -1,0 +1,22 @@
+{
+  "name": "model-builder",
+  "version": "0.1.0",
+  "description": "DCF, LBO, 3-statement, comps - live in Excel",
+  "author": {
+    "name": "Anthropic FSI"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Model Builder",
+    "shortDescription": "Build and review financial model artifacts.",
+    "longDescription": "Installs financial modeling skills for DCF, LBO, three-statement models, comps, spreadsheet authoring, and workbook audit workflows.",
+    "developerName": "Anthropic FSI",
+    "category": "Finance",
+    "capabilities": [
+      "Skills"
+    ],
+    "defaultPrompt": [
+      "Build a financial model."
+    ]
+  }
+}
