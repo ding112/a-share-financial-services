@@ -133,6 +133,9 @@ def cninfo_pdf_url(disclosure_url: str) -> str:
     announcement_id = query.get("announcementId", [""])[0]
     if not announcement_id:
         raise ValueError(f"cannot parse announcementId from {disclosure_url}")
+    announcement_time = query.get("announcementTime", [""])[0][:10]
+    if re.fullmatch(r"[12][0-9]{3}-[01][0-9]-[0-3][0-9]", announcement_time):
+        return f"http://static.cninfo.com.cn/finalpage/{announcement_time}/{announcement_id}.PDF"
     return f"http://static.cninfo.com.cn/finalpage/{announcement_id}.PDF"
 
 

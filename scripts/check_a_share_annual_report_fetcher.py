@@ -105,8 +105,14 @@ def validate_annual_report_fetcher() -> list[str]:
         "http://www.cninfo.com.cn/new/disclosure/detail?stockCode=300750&"
         "announcementId=1219550000&orgId=gfbj0835075&announcementTime=2025-04-25"
     )
-    if pdf_url != "http://static.cninfo.com.cn/finalpage/1219550000.PDF":
+    if pdf_url != "http://static.cninfo.com.cn/finalpage/2025-04-25/1219550000.PDF":
         errors.append(f"cninfo_pdf_url returned {pdf_url!r}")
+    legacy_pdf_url = module.cninfo_pdf_url(
+        "http://www.cninfo.com.cn/new/disclosure/detail?stockCode=300750&"
+        "announcementId=1219550000&orgId=gfbj0835075"
+    )
+    if legacy_pdf_url != "http://static.cninfo.com.cn/finalpage/1219550000.PDF":
+        errors.append(f"legacy cninfo_pdf_url returned {legacy_pdf_url!r}")
 
     with tempfile.TemporaryDirectory() as tmp:
         output_dir = Path(tmp) / "annual"
