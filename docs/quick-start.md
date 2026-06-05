@@ -1,19 +1,28 @@
 # Quick Start（本地使用）
 
-## 1) 安装本地 marketplace
+本页保留两条本地安装路径。Claude Code 路径提供完整的命名 agent 调用体验；
+Codex 路径第一版只安装 agent plugin 中的 skills，不复制 Claude Code 的 slash
+command 或命名 agent 调用语法。
+
+## Claude Code 路径
+
+Claude Code 使用 `.claude-plugin/marketplace.json`。安装后，可以用
+`<agent>:<agent>(...)` 语法调用命名 agent。
+
+### 1) 安装本地 marketplace
 
 ```bash
 claude plugin marketplace add /Users/ding/workspace/mengzai/financial-services
 ```
 
-## 2) 安装插件
+### 2) 安装插件
 
 ```bash
 claude plugin install a-share-screener@claude-for-financial-services
 claude plugin install a-share-market-researcher@claude-for-financial-services
 ```
 
-## 3) 使用命令
+### 3) 使用命令
 
 短线筛选（`a-share-screener`）：
 
@@ -31,11 +40,37 @@ a-share-market-researcher:a-share-market-researcher(
 )
 ```
 
-## 4) 成功标志
+### 4) 成功标志
 
 看到类似 `Backgrounded agent` 或 agent 开始返回结果，即表示调用成功。
 
-## 5) 来源契约 smoke test
+## Codex 路径
+
+Codex 使用 `.agents/plugins/marketplace.json`。第一版登记
+`plugins/agent-plugins/` 下的 agent 能力包，并额外登记 `equity-research`
+skill package。Codex 暴露的是 skills，不是 Claude Code slash commands。
+
+### 1) 安装本地 marketplace
+
+```bash
+codex plugin marketplace add /Users/ding/workspace/mengzai/financial-services
+```
+
+### 2) 安装 agent 能力包
+
+当前 Codex CLI 只负责添加、升级或移除 marketplace。添加本地 marketplace 后，
+在 Codex app 的插件界面安装 `financial-services` marketplace 中的
+`a-share-screener`、`a-share-market-researcher` 或 `equity-research`。
+
+### 3) 成功标志
+
+安装完成后，开启新的 Codex 线程，让 Codex 重新加载插件和 skills。Codex 第一版
+不提供 Claude Code 的 `a-share-market-researcher:a-share-market-researcher(...)`
+或 `/equity-research:initiate` 调用语法；你可以直接描述研究任务，由已安装的
+skills 参与响应。若要在 Claude Code 中使用 `/equity-research:initiate`，安装
+Claude Code 的 `equity-research@claude-for-financial-services` 插件。
+
+## 来源契约 smoke test
 
 在本地调用 `a-share-market-researcher` 时，使用一个有明确来源要求的 prompt
 检查来源契约是否生效：
@@ -56,7 +91,7 @@ a-share-market-researcher:a-share-market-researcher(
 - 核心 idea 不使用单独的概念标签作为入选依据。
 - 缺失行情、估值或业务暴露证据时，输出写 `来源缺失` 或 `待验证`。
 
-## 6) 数据包契约 smoke test
+## 数据包契约 smoke test
 
 如果你已经准备了本地研究数据包，可以让 `a-share-market-researcher` 先解析
 数据包，再开始写行业研究。推荐目录名是 `research-pack/`，必需文件是
@@ -80,7 +115,7 @@ a-share-market-researcher:a-share-market-researcher(
 - 缺少可选文件时，对应字段写 `来源缺失`、`待验证` 或 `口径不可比`。
 - 没有 `snapshot_time` 的行情或估值字段不用于排序。
 
-## 7) Comps artifact smoke test
+## Comps artifact smoke test
 
 准备好 `research-pack/` 后，可以只刷新 comps artifact：
 
@@ -102,7 +137,7 @@ a-share-market-researcher:a-share-market-researcher(
 - 每个数字字段能追溯到来源、时间和口径。
 - 样本数小于 3 的指标不输出统计分布。
 
-## 8) Fixture 端到端 smoke test
+## Fixture 端到端 smoke test
 
 仓库包含固定的 A 股研究数据包 fixtures。它们用于无网络验证输入契约和
 comps artifact 交接，不代表实时行情或投资建议。
@@ -132,7 +167,7 @@ a-share-market-researcher:a-share-market-researcher(
 )
 ```
 
-## 9) 抓取公开行情和财务摘要
+## 抓取公开行情和财务摘要
 
 如果你已经有 `peer_universe.csv`，可以先抓取公开行情和财务摘要。这个命令会
 联网访问公开数据源，并把结果写成 research-pack 可消费的本地文件。第一版只
@@ -163,7 +198,7 @@ python3 scripts/fetch_a_share_public_data.py \
   --financial-source fixture
 ```
 
-## 10) 本地公开数据预处理
+## 本地公开数据预处理
 
 如果你已经在本地导出腾讯行情、AkShare 财务摘要或其他 CSV，可以先把这些
 文件整理成标准 `research-pack/`。这个脚本只读取本地文件，不访问网络。
@@ -186,7 +221,7 @@ a-share-market-researcher:a-share-market-researcher(
 )
 ```
 
-## 11) 生成 A 股 comps artifact
+## 生成 A 股 comps artifact
 
 准备好本地 `research-pack/` 后，可以用阶段 5 生成器直接产出 comps artifact
 文件集。这个脚本只读取本地文件，不访问网络，也不会为缺失字段补数。
@@ -226,7 +261,7 @@ wrote comps workbook: out/机器人产业链/workbook/机器人产业链可比�
 - `comps_summary.md` 包含可用数据、不可排序字段、异常项、统计分布和
   idea generation 交接说明。
 
-## 12) 生成 A 股 research handoff
+## 生成 A 股 research handoff
 
 阶段 6 handoff 把 `research-pack/`、阶段 5 comps artifact、暴露证据和
 事件风险汇成 competitive-analysis 与 idea-generation 可以直接消费的结构化
@@ -251,7 +286,7 @@ python3 scripts/generate_a_share_research_handoff.py \
 入选、降级和风险排除。`data_quality_flag` 非 `可用` 的公司不得直接用于
 估值或质量排序。
 
-## 13) 生成阶段 7 研究 note assembly
+## 生成阶段 7 研究 note assembly
 
 阶段 5 comps artifact 和阶段 6 research handoff 都生成后，可以运行阶段 7
 组装器生成中文研究 note、slide outline 和 manifest。
@@ -280,7 +315,7 @@ out/机器人产业链/note/机器人产业链路演大纲.md
 out/机器人产业链/note/research_assembly_manifest.json
 ```
 
-## 14) 生成 A 股 dashboard
+## 生成 A 股 dashboard
 
 当同一主题目录下已经有 `research-pack/`、`comps/`、`handoff/` 和 `note/`
 产物时，可以生成一个离线可打开的静态 HTML 看板。Dashboard 只读取本地文件，
