@@ -44,3 +44,17 @@ Run `python3 scripts/check.py` before committing — it lints every manifest, ve
 1. Edit markdown files directly - changes take effect immediately
 2. Test commands with `/plugin:command-name` syntax
 3. Skills are invoked automatically when their trigger conditions match
+
+## Agent skills
+
+### Issue tracker
+
+本仓库使用 `.scratch/` 下的本地 Markdown 跟踪 PRD 和 issues，不处理外部 PR。详见 `docs/agents/issue-tracker.md`。
+
+### Triage labels
+
+使用默认五类状态：`needs-triage`、`needs-info`、`ready-for-agent`、`ready-for-human`、`wontfix`。详见 `docs/agents/triage-labels.md`。
+
+### Domain docs
+
+本仓库采用多上下文领域文档布局。详见 `docs/agents/domain.md`。
