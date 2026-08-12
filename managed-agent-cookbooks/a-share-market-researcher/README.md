@@ -114,7 +114,7 @@ The recommended package contains these files:
 | `macro_context.csv` | No | GDP, CPI, PPI, PMI macro indicators. |
 | `company_details.csv` | No | Main business composition, company profile, share structure. |
 | `research_reports.csv` | No | 东方财富个股研报索引，固定标记为 `third_party`、`待验证`，不进入财务摘要、业务暴露、估值排序或 idea shortlist。 |
-| `research_reports/` | No | 研报材料稳定目录；当前索引阶段只创建目录，不下载 PDF。 |
+| `research_reports/` | No | 限量研报 PDF 材料目录；默认每证券最新 3 份，固定标记为 `third_party`、`待验证`。 |
 | `northbound_flow.csv` | No | Northbound capital net flow trend. |
 | `northbound_holdings.csv` | No | Northbound stock holdings. |
 | `margin_trading.csv` | No | Margin trading balance and buy amount. |
@@ -205,6 +205,15 @@ python -m pip install -r requirements.txt
   --theme 机器人产业链 \
   --as-of 2026-05-22
 ```
+
+一键入口默认下载每个证券最新 3 份研报 PDF，可用
+`--research-report-pdf-limit` 调整上限，或用
+`--skip-research-report-pdf-download` 只生成索引。PDF 只写入默认被 Git 忽略的
+`out/` 运行目录；有效既有文件会在重复运行时复用。下载成功仅表示第三方材料
+已定位，不会把 `third_party`、`待验证` 升级为已验证证据，也不会自动进入
+财务摘要、业务暴露、估值排序或 idea shortlist。单份下载失败时索引行仍保留，
+`local_pdf_path` 为 `来源缺失`，具体原因在 `fetch_errors.csv` 的
+`research_report_pdf` 阶段排查。
 
 命令写出：
 

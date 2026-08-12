@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""为 A 股 research-pack 抓取东方财富个股研报索引。
+"""为 A 股 research-pack 抓取东方财富个股研报索引和限量 PDF。
 
 东方财富端点与字段映射参考了 Apache-2.0 项目 ``a-stock-data`` 和项目现有
 AkShare 目录；本实现使用标准库重新实现，并以本项目的来源、错误和输出契约
-为准。Issue 01 只写索引并预留材料目录，不下载 PDF。
+为准。PDF 只表示材料已定位，不会升级第三方证据的验证状态。
 """
 
 from __future__ import annotations
@@ -12,8 +12,10 @@ import argparse
 import csv
 import datetime as dt
 import json
+import re
 import sys
 import time
+import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -31,6 +33,9 @@ REQUEST_TIMEOUT_SECONDS = 30
 REQUEST_RETRY_ATTEMPTS = 3
 REQUEST_RETRY_DELAY_SECONDS = 0.6
 REQUEST_INTERVAL_SECONDS = 1.1
+PDF_MIN_BYTES = 1024
+PDF_MAX_BYTES = 50 * 1024 * 1024
+PDF_TITLE_MAX_CHARS = 72
 
 REPORT_COLUMNS = [
     "report_id",
@@ -87,6 +92,17 @@ def parse_args() -> argparse.Namespace:
         help="每个证券最多保留的研报数，默认 20。",
     )
     parser.add_argument(
+        "--pdf-limit-per-security",
+        type=int,
+        default=3,
+        help="每个证券最多下载的最新 PDF 数，默认 3。",
+    )
+    parser.add_argument(
+        "--skip-pdf-download",
+        action="store_true",
+        help="跳过 PDF 下载，但仍生成研报索引和稳定材料目录。",
+    )
+    parser.add_argument(
         "--source",
         choices=["eastmoney", "fixture"],
         default="eastmoney",
@@ -94,7 +110,14 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--fixture-scenario",
-        choices=["success", "no-data", "partial-failure", "all-failure"],
+        choices=[
+            "success",
+            "no-data",
+            "partial-failure",
+            "all-failure",
+            "pdf-partial-failure",
+            "pdf-non-pdf",
+        ],
         default="success",
         help="fixture 离线场景。",
     )
@@ -270,11 +293,14 @@ def fixture_index(
     outside_date = (as_of - dt.timedelta(days=lookback_days + 1)).isoformat()
 
     def record(suffix: str, publish_date: str) -> dict[str, Any]:
+        title = f"{name} fixture 研报 {suffix}"
+        if suffix == "A":
+            title = f"../{name}?策略:*<>|\\" + "超长标题" * 40
         return {
             "infoCode": f"AP{as_of.strftime('%Y%m%d')}{symbol}{suffix}",
             "stockCode": symbol,
             "stockName": name,
-            "title": f"{name} fixture 研报 {suffix}",
+            "title": title,
             "orgSName": "fixture 券商",
             "publishDate": publish_date,
             "reportType": "公司研究",
@@ -282,7 +308,7 @@ def fixture_index(
             "predictThisYearEps": "1.00",
             "predictNextYearEps": "1.20",
             "predictNextTwoYearEps": "1.40",
-            "indvInduCode": "fixture-industry",
+            "indvInduCode": f"fixture-industry-{suffix}",
             "indvInduName": "fixture 行业",
             "encodeUrl": f"fixture-{symbol}-{suffix}",
         }
@@ -369,6 +395,179 @@ def deduplicate(rows: list[dict[str, str]]) -> list[dict[str, str]]:
     return result
 
 
+def sanitize_filename_component(value: str, max_chars: int, max_bytes: int) -> str:
+    normalized = unicodedata.normalize("NFKC", value)
+    cleaned = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", normalized)
+    cleaned = re.sub(r"\s+", "_", cleaned).strip(" ._")
+    cleaned = cleaned[:max_chars].rstrip(" ._")
+    cleaned = cleaned.encode("utf-8")[:max_bytes].decode("utf-8", errors="ignore")
+    cleaned = cleaned.rstrip(" ._")
+    return cleaned or "report"
+
+
+def pdf_relative_path(row: dict[str, str]) -> Path:
+    report_id = sanitize_filename_component(row["report_id"], 48, 64)
+    title = sanitize_filename_component(row["title"], PDF_TITLE_MAX_CHARS, 128)
+    filename = f"{report_id}_{row['publish_date']}_{title}.pdf"
+    return Path("research_reports") / filename
+
+
+def pdf_destination(output_dir: Path, row: dict[str, str]) -> tuple[Path, str]:
+    output_root = output_dir.resolve()
+    material_path = output_root / "research_reports"
+    if material_path.is_symlink():
+        raise ValueError("研报 PDF 材料目录不能是符号链接")
+    material_dir = material_path.resolve()
+    if material_dir.parent != output_root:
+        raise ValueError("研报 PDF 材料目录越出研究数据包")
+    relative_path = pdf_relative_path(row)
+    destination = material_dir / relative_path.name
+    if destination.parent != material_dir:
+        raise ValueError(f"研报 PDF 只能写入材料目录: {relative_path}")
+    return destination, relative_path.as_posix()
+
+
+def validate_pdf_payload(payload: bytes) -> None:
+    if len(payload) < PDF_MIN_BYTES:
+        raise ValueError(f"研报 PDF 响应过小: {len(payload)} bytes")
+    if len(payload) > PDF_MAX_BYTES:
+        raise ValueError(f"研报 PDF 响应过大: {len(payload)} bytes")
+    if not payload.startswith(b"%PDF-"):
+        raise ValueError("研报 PDF 响应缺少 PDF 文件签名")
+
+
+def valid_existing_pdf(path: Path) -> bool:
+    if path.is_symlink() or not path.is_file():
+        return False
+    size = path.stat().st_size
+    if size < PDF_MIN_BYTES or size > PDF_MAX_BYTES:
+        return False
+    with path.open("rb") as handle:
+        return handle.read(5) == b"%PDF-"
+
+
+def request_pdf_payload(url: str) -> bytes:
+    """串行、超时且有限重试地下载一份东方财富研报 PDF。"""
+
+    global _last_request_at
+    retryable_statuses = {429, 500, 502, 503, 504}
+    last_error: Exception | None = None
+    for attempt in range(REQUEST_RETRY_ATTEMPTS):
+        _throttle_request()
+        request = urllib.request.Request(
+            url,
+            headers={
+                "User-Agent": USER_AGENT,
+                "Referer": "https://data.eastmoney.com/",
+                "Accept": "application/pdf,*/*;q=0.8",
+            },
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
+                status = getattr(response, "status", None)
+                if status is None and hasattr(response, "getcode"):
+                    status = response.getcode()
+                if status is not None and not 200 <= int(status) < 300:
+                    raise RuntimeError(f"研报 PDF HTTP 状态异常: {status}")
+                payload = response.read(PDF_MAX_BYTES + 1)
+            validate_pdf_payload(payload)
+            return payload
+        except urllib.error.HTTPError as exc:
+            last_error = exc
+            if exc.code not in retryable_statuses:
+                raise
+        except (urllib.error.URLError, TimeoutError, OSError, ValueError, RuntimeError) as exc:
+            last_error = exc
+        finally:
+            _last_request_at = time.monotonic()
+        if attempt + 1 < REQUEST_RETRY_ATTEMPTS:
+            time.sleep(REQUEST_RETRY_DELAY_SECONDS * (attempt + 1))
+    raise RuntimeError(f"Eastmoney report PDF request failed after retries: {last_error}")
+
+
+def fixture_pdf_payload(row: dict[str, str], scenario: str) -> bytes:
+    report_id = row["report_id"]
+    if scenario == "pdf-partial-failure" and report_id.endswith("B"):
+        raise RuntimeError("fixture research report PDF failure")
+    if scenario == "pdf-non-pdf" and report_id.endswith("A"):
+        return b"<html><body>fixture error page</body></html>" + b" " * PDF_MIN_BYTES
+    if scenario == "pdf-non-pdf" and report_id.endswith("B"):
+        return b"%PDF-1.4\n%%EOF\n"
+    header = f"%PDF-1.4\n% synthetic fixture {report_id}\n".encode("utf-8")
+    return header + b"0" * (PDF_MIN_BYTES - len(header)) + b"\n%%EOF\n"
+
+
+def materialize_pdf(
+    row: dict[str, str],
+    output_dir: Path,
+    source: str,
+    fixture_scenario: str,
+) -> str:
+    destination, relative_path = pdf_destination(output_dir, row)
+    if valid_existing_pdf(destination):
+        return relative_path
+    if destination.exists() or destination.is_symlink():
+        destination.unlink()
+
+    if not row.get("pdf_url", "").startswith(("http://", "https://")):
+        raise ValueError(f"研报 {row['report_id']} 缺少有效 PDF 链接")
+    payload = (
+        fixture_pdf_payload(row, fixture_scenario)
+        if source == "fixture"
+        else request_pdf_payload(row["pdf_url"])
+    )
+    validate_pdf_payload(payload)
+    temporary = destination.with_suffix(destination.suffix + ".part")
+    if temporary.exists() or temporary.is_symlink():
+        temporary.unlink()
+    try:
+        temporary.write_bytes(payload)
+        temporary.replace(destination)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+    return relative_path
+
+
+def download_selected_pdfs(
+    rows: list[dict[str, str]],
+    output_dir: Path,
+    source: str,
+    fixture_scenario: str,
+    pdf_limit_per_security: int,
+    skip_pdf_download: bool,
+) -> list[dict[str, str]]:
+    if skip_pdf_download:
+        return []
+
+    selected_counts: dict[str, int] = {}
+    errors: list[dict[str, str]] = []
+    for row in rows:
+        scope_key = row["security_code"]
+        selected_count = selected_counts.get(scope_key, 0)
+        if selected_count >= pdf_limit_per_security:
+            continue
+        selected_counts[scope_key] = selected_count + 1
+        try:
+            row["local_pdf_path"] = materialize_pdf(
+                row,
+                output_dir,
+                source,
+                fixture_scenario,
+            )
+        except Exception as exc:
+            row["local_pdf_path"] = MISSING
+            errors.append(
+                {
+                    "code": row["security_code"],
+                    "source": SOURCE_KEY,
+                    "stage": "research_report_pdf",
+                    "error": f"{row['report_id']}: {exc}",
+                }
+            )
+    return errors
+
+
 def append_manifest_entry(files: list[dict[str, str]], entry: dict[str, str]) -> None:
     files[:] = [item for item in files if item.get("file") != entry["file"]]
     files.append(entry)
@@ -379,6 +578,8 @@ def write_source_manifest_entries(
     as_of: str,
     lookback_days: int,
     limit_per_security: int,
+    pdf_limit_per_security: int,
+    skip_pdf_download: bool,
 ) -> None:
     path = output_dir / "source_manifest.json"
     data = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {"files": []}
@@ -409,9 +610,16 @@ def write_source_manifest_entries(
             "source_type": "third_party",
             "source_name": "东方财富研报 PDF",
             "data_time": as_of[:10],
-            "period_or_basis": "Issue 01 仅预留稳定目录，不下载 PDF",
+            "period_or_basis": (
+                f"每个证券最多下载最新 {pdf_limit_per_security} 份 PDF；"
+                f"跳过下载={'是' if skip_pdf_download else '否'}；"
+                "按研报索引的发布日期降序、报告 ID 升序选择"
+            ),
             "verification_status": "待验证",
-            "missing_behavior": "本切片所有 local_pdf_path 写来源缺失，不得视为内容已验证",
+            "missing_behavior": (
+                "下载失败写 research_report_pdf 且 local_pdf_path 写来源缺失；"
+                "PDF 只表示材料已定位，不得视为内容已验证"
+            ),
         },
     )
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -425,7 +633,7 @@ def write_fetch_errors(output_dir: Path, errors: list[dict[str, str]]) -> None:
             existing = [
                 row
                 for row in csv.DictReader(handle)
-                if not row.get("stage", "").startswith("research_report_index")
+                if not row.get("stage", "").startswith("research_report_")
             ]
     write_csv(path, existing + errors, ERROR_COLUMNS)
 
@@ -435,6 +643,8 @@ def run_pipeline(args: argparse.Namespace) -> int:
         raise ValueError("--lookback-days must be positive")
     if args.limit_per_security < 1:
         raise ValueError("--limit-per-security must be positive")
+    if args.pdf_limit_per_security < 1:
+        raise ValueError("--pdf-limit-per-security must be positive")
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -497,12 +707,24 @@ def run_pipeline(args: argparse.Namespace) -> int:
             )
 
     report_rows = deduplicate(report_rows)
+    errors.extend(
+        download_selected_pdfs(
+            report_rows,
+            output_dir,
+            args.source,
+            args.fixture_scenario,
+            args.pdf_limit_per_security,
+            args.skip_pdf_download,
+        )
+    )
     write_csv(output_dir / "research_reports.csv", report_rows, REPORT_COLUMNS)
     write_source_manifest_entries(
         output_dir,
         args.as_of,
         args.lookback_days,
         args.limit_per_security,
+        args.pdf_limit_per_security,
+        args.skip_pdf_download,
     )
     write_fetch_errors(output_dir, errors)
 

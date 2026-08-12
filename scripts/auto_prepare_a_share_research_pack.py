@@ -153,13 +153,31 @@ def parse_args() -> argparse.Namespace:
         help="Maximum research report index rows per security. Defaults to 20.",
     )
     parser.add_argument(
+        "--research-report-pdf-limit",
+        type=int,
+        default=3,
+        help="Maximum latest research report PDFs per security. Defaults to 3.",
+    )
+    parser.add_argument(
+        "--skip-research-report-pdf-download",
+        action="store_true",
+        help="Keep the research report index but skip PDF downloads.",
+    )
+    parser.add_argument(
         "--research-report-source",
         choices=["eastmoney", "fixture"],
         help="Research report source. Defaults to fixture for fixture universes, otherwise Eastmoney.",
     )
     parser.add_argument(
         "--research-report-fixture-scenario",
-        choices=["success", "no-data", "partial-failure", "all-failure"],
+        choices=[
+            "success",
+            "no-data",
+            "partial-failure",
+            "all-failure",
+            "pdf-partial-failure",
+            "pdf-non-pdf",
+        ],
         default="success",
         help="Offline research report scenario used with the fixture source.",
     )
@@ -521,6 +539,8 @@ def write_auto_prepare_manifest(
             "research_report_source": resolved_research_report_source(args),
             "research_report_lookback_days": args.research_report_lookback_days,
             "research_report_limit": args.research_report_limit,
+            "research_report_pdf_limit": args.research_report_pdf_limit,
+            "skip_research_report_pdf_download": args.skip_research_report_pdf_download,
         },
         "outputs": {filename: filename for filename in AUTO_OUTPUTS},
         "selection": selection,
@@ -643,26 +663,31 @@ def resolved_research_report_source(args: argparse.Namespace) -> str:
 
 def run_research_report_fetcher(args: argparse.Namespace, peer_path: Path, output_dir: Path) -> None:
     source = resolved_research_report_source(args)
+    command = [
+        sys.executable,
+        str(RESEARCH_REPORT_FETCHER),
+        "--peer-universe",
+        str(peer_path),
+        "--output-dir",
+        str(output_dir),
+        "--as-of",
+        args.as_of,
+        "--lookback-days",
+        str(args.research_report_lookback_days),
+        "--limit-per-security",
+        str(args.research_report_limit),
+        "--pdf-limit-per-security",
+        str(args.research_report_pdf_limit),
+        "--source",
+        source,
+        "--fixture-scenario",
+        args.research_report_fixture_scenario,
+    ]
+    if args.skip_research_report_pdf_download:
+        command.append("--skip-pdf-download")
     _run_optional_fetcher(
         "fetch_a_share_research_reports.py",
-        [
-            sys.executable,
-            str(RESEARCH_REPORT_FETCHER),
-            "--peer-universe",
-            str(peer_path),
-            "--output-dir",
-            str(output_dir),
-            "--as-of",
-            args.as_of,
-            "--lookback-days",
-            str(args.research_report_lookback_days),
-            "--limit-per-security",
-            str(args.research_report_limit),
-            "--source",
-            source,
-            "--fixture-scenario",
-            args.research_report_fixture_scenario,
-        ],
+        command,
     )
 
 
@@ -748,6 +773,8 @@ def main() -> int:
         raise SystemExit("--research-report-lookback-days must be positive")
     if args.research_report_limit < 1:
         raise SystemExit("--research-report-limit must be positive")
+    if args.research_report_pdf_limit < 1:
+        raise SystemExit("--research-report-pdf-limit must be positive")
     output_dir = Path(args.output_dir) if args.output_dir else stage_dir(args.theme, "research-pack")
     output_dir = output_dir.resolve()
     log_step(f"starting auto research-pack: theme={args.theme} output_dir={output_dir}")

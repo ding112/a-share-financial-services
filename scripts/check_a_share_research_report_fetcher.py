@@ -47,6 +47,9 @@ def run_auto_prepare(
     output_dir: Path,
     scenario: str = "success",
     force: bool = False,
+    pdf_limit: int | None = 1,
+    index_limit: int = 2,
+    skip_pdf_download: bool = False,
 ) -> subprocess.CompletedProcess[str]:
     offline_modules = output_dir.parent / "offline-modules"
     offline_modules.mkdir(parents=True, exist_ok=True)
@@ -85,10 +88,14 @@ def run_auto_prepare(
         "--research-report-lookback-days",
         "30",
         "--research-report-limit",
-        "2",
+        str(index_limit),
     ]
+    if pdf_limit is not None:
+        command.extend(["--research-report-pdf-limit", str(pdf_limit)])
     if force:
         command.append("--force")
+    if skip_pdf_download:
+        command.append("--skip-research-report-pdf-download")
     return subprocess.run(
         command,
         cwd=ROOT,
@@ -158,8 +165,37 @@ def validate_success_scenario(errors: list[str]) -> None:
             errors.append("研报索引必须统一标记为 third_party")
         if any(row.get("verification_status") != "待验证" for row in rows):
             errors.append("研报索引必须统一标记为待验证")
-        if any(row.get("local_pdf_path") != "来源缺失" for row in rows):
-            errors.append("Issue 01 不下载 PDF，本地路径必须为来源缺失")
+        downloaded_by_security: dict[str, int] = {}
+        downloaded_rows: list[dict[str, str]] = []
+        for row in rows:
+            local_path = row.get("local_pdf_path", "")
+            if local_path == "来源缺失":
+                continue
+            downloaded_rows.append(row)
+            code = row.get("security_code", "")
+            downloaded_by_security[code] = downloaded_by_security.get(code, 0) + 1
+            relative_path = Path(local_path)
+            pdf_path = output_dir / local_path
+            if not pdf_path.is_file() or not pdf_path.read_bytes().startswith(b"%PDF-"):
+                errors.append(f"索引中的研报 PDF 路径无效: {local_path}")
+            if (
+                relative_path.is_absolute()
+                or ".." in relative_path.parts
+                or relative_path.parent != Path("research_reports")
+                or any(char in relative_path.name for char in '<>:"/\\|?*')
+                or len(relative_path.name.encode("utf-8")) > 240
+            ):
+                errors.append(f"研报 PDF 路径或文件名不安全: {local_path}")
+            if row.get("report_id", "") not in relative_path.name:
+                errors.append(f"研报 PDF 文件名缺少稳定报告 ID: {local_path}")
+        if not downloaded_by_security or any(
+            count != 1 for count in downloaded_by_security.values()
+        ):
+            errors.append(f"每个证券应下载最新 1 份 PDF，实际 {downloaded_by_security}")
+        if any(not row.get("report_id", "").endswith("A") for row in downloaded_rows):
+            errors.append("PDF 上限为 1 时必须选择索引排序中的最新稳定报告 ID")
+        if not any("../" in row.get("title", "") and "?" in row.get("title", "") for row in rows):
+            errors.append("成功 fixture 必须用危险且超长的原始标题验证文件名清理与截断")
         if any(
             not row.get("detail_url", "").startswith(
                 "https://data.eastmoney.com/report/zw_stock.jshtml?encodeUrl="
@@ -188,6 +224,15 @@ def validate_success_scenario(errors: list[str]) -> None:
                     errors.append(f"研报索引来源口径缺少 `{token}`")
             if index_entry.get("verification_status") != "待验证":
                 errors.append("研报索引来源清单必须标记为待验证")
+            material_entry = by_file.get("research_reports/", {})
+            for token in ["1", "跳过下载=否", "发布日期降序", "报告 ID"]:
+                if token not in str(material_entry.get("period_or_basis", "")):
+                    errors.append(f"研报材料来源口径缺少 `{token}`")
+            if (
+                material_entry.get("source_type") != "third_party"
+                or material_entry.get("verification_status") != "待验证"
+            ):
+                errors.append("研报材料来源清单必须标记为 third_party、待验证")
 
         auto_manifest = json.loads(
             (output_dir / "auto_prepare_manifest.json").read_text(encoding="utf-8")
@@ -196,11 +241,22 @@ def validate_success_scenario(errors: list[str]) -> None:
             errors.append("auto_prepare_manifest.json 必须记录解析后的实际研报来源")
 
         first_output = report_path.read_text(encoding="utf-8")
+        reusable_path: Path | None = None
+        reusable_payload = b"%PDF-1.4\n% valid reuse sentinel\n" + b"R" * 1100
+        reusable_mtime: int | None = None
+        if downloaded_rows:
+            reusable_path = output_dir / downloaded_rows[0]["local_pdf_path"]
+            reusable_path.write_bytes(reusable_payload)
+            reusable_mtime = reusable_path.stat().st_mtime_ns
         repeated = run_auto_prepare(output_dir, force=True)
         if repeated.returncode != 0:
             errors.append(f"相同输入强制重跑退出码为 {repeated.returncode}")
         elif report_path.read_text(encoding="utf-8") != first_output:
             errors.append("相同输入重复运行产生了研报索引顺序或内容漂移")
+        if reusable_path is not None and reusable_path.read_bytes() != reusable_payload:
+            errors.append("强制刷新索引时重复下载并覆盖了既有有效 PDF")
+        if reusable_path is not None and reusable_path.stat().st_mtime_ns != reusable_mtime:
+            errors.append("重复运行未直接复用既有有效 PDF")
 
 
 def research_report_errors(output_dir: Path) -> list[dict[str, str]]:
@@ -208,6 +264,14 @@ def research_report_errors(output_dir: Path) -> list[dict[str, str]]:
         row
         for row in read_rows(output_dir / "fetch_errors.csv")
         if row.get("stage", "").startswith("research_report_index")
+    ]
+
+
+def research_report_pdf_errors(output_dir: Path) -> list[dict[str, str]]:
+    return [
+        row
+        for row in read_rows(output_dir / "fetch_errors.csv")
+        if row.get("stage") == "research_report_pdf"
     ]
 
 
@@ -339,6 +403,204 @@ def validate_partial_failure_scenario(errors: list[str]) -> None:
             errors.append("部分证券失败时独立抓取入口必须返回成功")
 
 
+def validate_skip_pdf_scenario(errors: list[str]) -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        output_dir = Path(tmp) / "research-pack"
+        result = run_auto_prepare(output_dir, skip_pdf_download=True)
+        if result.returncode != 0:
+            errors.append(f"跳过 PDF 场景退出码为 {result.returncode}: {result.stderr.strip()}")
+            return
+        rows = read_rows(output_dir / "research_reports.csv")
+        if not rows or any(row.get("local_pdf_path") != "来源缺失" for row in rows):
+            errors.append("跳过 PDF 时必须保留索引并将本地路径标记为来源缺失")
+        material_dir = output_dir / "research_reports"
+        if not material_dir.is_dir() or any(material_dir.iterdir()):
+            errors.append("跳过 PDF 时必须保留空的稳定研报材料目录")
+        if research_report_pdf_errors(output_dir):
+            errors.append("跳过 PDF 不应记录 research_report_pdf 下载错误")
+        manifest = json.loads((output_dir / "source_manifest.json").read_text(encoding="utf-8"))
+        material_entries = [
+            item for item in manifest.get("files", []) if item.get("file") == "research_reports/"
+        ]
+        material_basis = str(material_entries[0].get("period_or_basis", "")) if material_entries else ""
+        if "跳过下载=是" not in material_basis:
+            errors.append("来源清单必须明确记录 PDF 已跳过")
+        auto_manifest = json.loads(
+            (output_dir / "auto_prepare_manifest.json").read_text(encoding="utf-8")
+        )
+        if auto_manifest.get("inputs", {}).get("skip_research_report_pdf_download") is not True:
+            errors.append("一键准备清单必须记录 PDF 跳过选项")
+
+
+def validate_auto_prepare_pdf_defaults(errors: list[str]) -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        output_dir = Path(tmp) / "research-pack"
+        result = run_auto_prepare(output_dir, pdf_limit=None, index_limit=4)
+        if result.returncode != 0:
+            errors.append(f"一键准备 PDF 默认值场景退出码为 {result.returncode}")
+            return
+        rows = read_rows(output_dir / "research_reports.csv")
+        counts: dict[str, int] = {}
+        for row in rows:
+            if row.get("local_pdf_path") == "来源缺失":
+                continue
+            code = row.get("security_code", "")
+            counts[code] = counts.get(code, 0) + 1
+        if not counts or any(count != 3 for count in counts.values()):
+            errors.append(f"一键准备默认必须下载每证券最新 3 份 PDF，实际 {counts}")
+        auto_manifest = json.loads(
+            (output_dir / "auto_prepare_manifest.json").read_text(encoding="utf-8")
+        )
+        inputs = auto_manifest.get("inputs", {})
+        if inputs.get("research_report_pdf_limit") != 3:
+            errors.append("一键准备清单必须记录默认 PDF 上限 3")
+        if inputs.get("skip_research_report_pdf_download") is not False:
+            errors.append("一键准备清单必须记录默认不跳过 PDF")
+
+
+def validate_pdf_partial_failure_scenario(errors: list[str]) -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        output_dir = Path(tmp) / "research-pack"
+        result = run_auto_prepare(
+            output_dir,
+            scenario="pdf-partial-failure",
+            pdf_limit=2,
+        )
+        if result.returncode != 0:
+            errors.append(f"PDF 部分失败场景退出码为 {result.returncode}: {result.stderr.strip()}")
+            return
+        rows = read_rows(output_dir / "research_reports.csv")
+        if len(rows) != 4:
+            errors.append("单份 PDF 失败不得删除对应索引行")
+        succeeded = [row for row in rows if row.get("local_pdf_path") != "来源缺失"]
+        failed = [row for row in rows if row.get("local_pdf_path") == "来源缺失"]
+        if len(succeeded) != 2 or len(failed) != 2:
+            errors.append(f"PDF 部分失败应保留 2 份成功、2 份缺失，实际 {len(succeeded)}/{len(failed)}")
+        pdf_errors = research_report_pdf_errors(output_dir)
+        if len(pdf_errors) != 2 or any("fixture research report PDF failure" not in row["error"] for row in pdf_errors):
+            errors.append("单份 PDF 失败必须写入 research_report_pdf 错误记录")
+        if research_report_errors(output_dir):
+            errors.append("PDF 失败不得改变索引阶段的成功记录")
+
+
+def validate_invalid_pdf_scenario(errors: list[str]) -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        output_dir = Path(tmp) / "research-pack"
+        result = run_auto_prepare(output_dir, scenario="pdf-non-pdf", pdf_limit=2)
+        if result.returncode != 0:
+            errors.append(f"无效 PDF 场景退出码为 {result.returncode}: {result.stderr.strip()}")
+            return
+        rows = read_rows(output_dir / "research_reports.csv")
+        if any(row.get("local_pdf_path") != "来源缺失" for row in rows):
+            errors.append("HTML 或过小响应不得写入研报索引的本地路径")
+        material_dir = output_dir / "research_reports"
+        if not material_dir.is_dir() or any(material_dir.iterdir()):
+            errors.append("HTML 或过小响应不得作为有效 PDF 保留")
+        pdf_errors = research_report_pdf_errors(output_dir)
+        if len(pdf_errors) != 4:
+            errors.append(f"4 份无效 PDF 应分别记录错误，实际 {len(pdf_errors)} 条")
+        messages = "\n".join(row.get("error", "") for row in pdf_errors)
+        for token in ["文件签名", "响应过小"]:
+            if token not in messages:
+                errors.append(f"无效 PDF 错误必须区分 `{token}`")
+
+
+def validate_pdf_directory_escape_is_rejected(errors: list[str]) -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        peer_path = root / "peer_universe.csv"
+        with peer_path.open("w", newline="", encoding="utf-8") as handle:
+            writer = csv.DictWriter(handle, fieldnames=["code", "name"])
+            writer.writeheader()
+            writer.writerow({"code": "300750.SZ", "name": "宁德时代"})
+        output_dir = root / "research-pack"
+        output_dir.mkdir()
+        outside_dir = root / "outside"
+        outside_dir.mkdir()
+        (output_dir / "research_reports").symlink_to(outside_dir, target_is_directory=True)
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(FETCHER),
+                "--peer-universe",
+                str(peer_path),
+                "--output-dir",
+                str(output_dir),
+                "--as-of",
+                "2026-07-13",
+                "--limit-per-security",
+                "1",
+                "--pdf-limit-per-security",
+                "1",
+                "--source",
+                "fixture",
+            ],
+            cwd=ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            errors.append(f"PDF 目录越界应只降级下载，实际退出码 {result.returncode}")
+            return
+        if any(outside_dir.iterdir()):
+            errors.append("research_reports 目录符号链接导致 PDF 写出研究数据包")
+        rows = read_rows(output_dir / "research_reports.csv")
+        if not rows or any(row.get("local_pdf_path") != "来源缺失" for row in rows):
+            errors.append("PDF 目录越界时索引必须保留且本地路径标记为来源缺失")
+        if len(research_report_pdf_errors(output_dir)) != 1:
+            errors.append("PDF 目录越界必须记录 research_report_pdf 错误")
+
+
+def validate_pdf_temporary_symlink_escape_is_rejected(errors: list[str]) -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        output_dir = root / "research-pack"
+        output_dir.mkdir()
+        peer_path = root / "peer_universe.csv"
+        with peer_path.open("w", newline="", encoding="utf-8") as handle:
+            writer = csv.DictWriter(handle, fieldnames=["code", "name"])
+            writer.writeheader()
+            writer.writerow({"code": "300750.SZ", "name": "宁德时代"})
+        command = [
+            sys.executable,
+            str(FETCHER),
+            "--peer-universe",
+            str(peer_path),
+            "--output-dir",
+            str(output_dir),
+            "--as-of",
+            "2026-07-13",
+            "--limit-per-security",
+            "1",
+            "--pdf-limit-per-security",
+            "1",
+            "--source",
+            "fixture",
+        ]
+        first = subprocess.run(command, cwd=ROOT, check=False, capture_output=True, text=True)
+        if first.returncode != 0:
+            errors.append("临时文件符号链接场景无法建立初始 PDF")
+            return
+        row = read_rows(output_dir / "research_reports.csv")[0]
+        pdf_path = output_dir / row["local_pdf_path"]
+        pdf_path.unlink()
+        outside_path = root / "outside.pdf"
+        sentinel = b"outside sentinel"
+        outside_path.write_bytes(sentinel)
+        temporary_path = pdf_path.with_suffix(pdf_path.suffix + ".part")
+        temporary_path.symlink_to(outside_path)
+
+        repeated = subprocess.run(command, cwd=ROOT, check=False, capture_output=True, text=True)
+        if repeated.returncode != 0:
+            errors.append("临时文件符号链接应安全替换为正常 PDF")
+            return
+        if outside_path.read_bytes() != sentinel:
+            errors.append("预置的 .part 符号链接导致 PDF 写出研报材料目录")
+        if pdf_path.is_symlink() or not pdf_path.read_bytes().startswith(b"%PDF-"):
+            errors.append("临时符号链接处理后必须得到材料目录内的普通 PDF 文件")
+
+
 def validate_all_failure_scenario(errors: list[str]) -> None:
     with tempfile.TemporaryDirectory() as tmp:
         output_dir = Path(tmp) / "research-pack"
@@ -383,6 +645,8 @@ def validate_defaults_and_help(errors: list[str]) -> None:
         "--as-of",
         "--lookback-days",
         "--limit-per-security",
+        "--pdf-limit-per-security",
+        "--skip-pdf-download",
     ]:
         if token not in help_result.stdout:
             errors.append(f"独立研报抓取入口 --help 缺少 {token}")
@@ -414,6 +678,9 @@ def validate_defaults_and_help(errors: list[str]) -> None:
         )
         if result.returncode != 0:
             errors.append(f"独立抓取器默认参数场景退出码为 {result.returncode}")
+        default_rows = read_rows(root / "output" / "research_reports.csv")
+        if len([row for row in default_rows if row.get("local_pdf_path") != "来源缺失"]) != 3:
+            errors.append("独立抓取器默认必须下载每证券最新 3 份 PDF")
         manifest_path = root / "output" / "source_manifest.json"
         if manifest_path.is_file():
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -434,6 +701,12 @@ def validate_research_report_fetcher() -> list[str]:
     validate_no_data_scenario(errors)
     validate_null_data_response_is_no_data(errors)
     validate_partial_failure_scenario(errors)
+    validate_skip_pdf_scenario(errors)
+    validate_auto_prepare_pdf_defaults(errors)
+    validate_pdf_partial_failure_scenario(errors)
+    validate_invalid_pdf_scenario(errors)
+    validate_pdf_directory_escape_is_rejected(errors)
+    validate_pdf_temporary_symlink_escape_is_rejected(errors)
     validate_all_failure_scenario(errors)
     return errors
 
@@ -441,11 +714,11 @@ def validate_research_report_fetcher() -> list[str]:
 def main() -> int:
     errors = validate_research_report_fetcher()
     if errors:
-        print(f"FAIL - {len(errors)} 个 A 股研报索引问题:", file=sys.stderr)
+        print(f"FAIL - {len(errors)} 个 A 股研报索引与 PDF 问题:", file=sys.stderr)
         for error in errors:
             print(f"  x {error}", file=sys.stderr)
         return 1
-    print("OK - A 股研报索引检查通过。")
+    print("OK - A 股研报索引与 PDF 检查通过。")
     return 0
 
 

@@ -43,6 +43,8 @@ REQUIRED_TOKENS = [
     "--universe-source",
     "--research-report-lookback-days",
     "--research-report-limit",
+    "--research-report-pdf-limit",
+    "--skip-research-report-pdf-download",
     "candidate_peer_universe.csv",
     "peer_universe.csv",
     "market_snapshot.csv",
@@ -92,7 +94,15 @@ def validate_auto_prepare() -> list[str]:
     )
     if help_result.returncode != 0:
         errors.append(f"{SCRIPT.relative_to(ROOT)} --help exited {help_result.returncode}")
-    for token in ["--theme", "--output-dir", "--as-of", "--peer-universe", "--force"]:
+    for token in [
+        "--theme",
+        "--output-dir",
+        "--as-of",
+        "--peer-universe",
+        "--force",
+        "--research-report-pdf-limit",
+        "--skip-research-report-pdf-download",
+    ]:
         if token not in help_result.stdout:
             errors.append(f"{SCRIPT.relative_to(ROOT)} --help missing {token}")
 
