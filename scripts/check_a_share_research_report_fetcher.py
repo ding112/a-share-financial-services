@@ -50,6 +50,7 @@ def run_auto_prepare(
     pdf_limit: int | None = 1,
     index_limit: int = 2,
     skip_pdf_download: bool = False,
+    industry_codes: list[str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     offline_modules = output_dir.parent / "offline-modules"
     offline_modules.mkdir(parents=True, exist_ok=True)
@@ -96,6 +97,8 @@ def run_auto_prepare(
         command.append("--force")
     if skip_pdf_download:
         command.append("--skip-research-report-pdf-download")
+    for industry_code in industry_codes or []:
+        command.extend(["--research-report-industry-code", industry_code])
     return subprocess.run(
         command,
         cwd=ROOT,
@@ -224,6 +227,8 @@ def validate_success_scenario(errors: list[str]) -> None:
                     errors.append(f"研报索引来源口径缺少 `{token}`")
             if index_entry.get("verification_status") != "待验证":
                 errors.append("研报索引来源清单必须标记为待验证")
+            if "显式行业" in str(index_entry.get("period_or_basis", "")):
+                errors.append("未提供行业代码时来源口径不得声称包含显式行业")
             material_entry = by_file.get("research_reports/", {})
             for token in ["1", "跳过下载=否", "发布日期降序", "报告 ID"]:
                 if token not in str(material_entry.get("period_or_basis", "")):
@@ -239,6 +244,8 @@ def validate_success_scenario(errors: list[str]) -> None:
         )
         if auto_manifest.get("inputs", {}).get("research_report_source") != "fixture":
             errors.append("auto_prepare_manifest.json 必须记录解析后的实际研报来源")
+        if "research_report_industry_codes" in auto_manifest.get("inputs", {}):
+            errors.append("未提供行业代码时一键准备清单必须保持原有个股输入形状")
 
         first_output = report_path.read_text(encoding="utf-8")
         reusable_path: Path | None = None
@@ -257,6 +264,89 @@ def validate_success_scenario(errors: list[str]) -> None:
             errors.append("强制刷新索引时重复下载并覆盖了既有有效 PDF")
         if reusable_path is not None and reusable_path.stat().st_mtime_ns != reusable_mtime:
             errors.append("重复运行未直接复用既有有效 PDF")
+
+
+def validate_single_industry_scenario(errors: list[str]) -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        output_dir = Path(tmp) / "research-pack"
+        result = run_auto_prepare(output_dir, industry_codes=["1238"])
+        if result.returncode != 0:
+            errors.append(f"单行业一键准备退出码为 {result.returncode}: {result.stderr.strip()}")
+            return
+
+        rows = read_rows(output_dir / "research_reports.csv")
+        stock_rows = [row for row in rows if row.get("scope_type") == "stock"]
+        industry_rows = [row for row in rows if row.get("scope_type") == "industry"]
+        if len(stock_rows) != 4 or len(industry_rows) != 2:
+            errors.append(
+                f"单行业混合索引应包含 4 条个股和 2 条行业研报，实际 "
+                f"{len(stock_rows)}/{len(industry_rows)}"
+            )
+        if industry_rows and any(
+            row.get("industry_code") != "1238"
+            or row.get("industry_name") != "fixture 行业 1238"
+            or row.get("security_code")
+            or row.get("security_name")
+            for row in industry_rows
+        ):
+            errors.append("行业研报必须以显式行业代码和行业名称标识，证券字段必须留空")
+        if industry_rows and any(
+            row.get("source_type") != "third_party"
+            or row.get("verification_status") != "待验证"
+            for row in industry_rows
+        ):
+            errors.append("行业研报必须统一标记为 third_party、待验证")
+        if industry_rows and any(
+            "/report/zw_industry.jshtml?encodeUrl=" not in row.get("detail_url", "")
+            for row in industry_rows
+        ):
+            errors.append("行业研报详情链接必须使用东方财富行业研报正文入口")
+
+        manifest = json.loads((output_dir / "source_manifest.json").read_text(encoding="utf-8"))
+        entries = {
+            item.get("file"): item
+            for item in manifest.get("files", [])
+            if isinstance(item, dict)
+        }
+        for filename in ["research_reports.csv", "research_reports/"]:
+            basis = str(entries.get(filename, {}).get("period_or_basis", ""))
+            for token in ["个股", "显式行业", "1238"]:
+                if token not in basis:
+                    errors.append(f"{filename} 来源口径缺少 `{token}`")
+        index_missing_behavior = str(
+            entries.get("research_reports.csv", {}).get("missing_behavior", "")
+        )
+        for token in ["行业规模", "业务暴露", "盈利预测", "idea shortlist"]:
+            if token not in index_missing_behavior:
+                errors.append(f"显式行业研报缺失行为未声明禁止进入 `{token}`")
+        auto_manifest = json.loads(
+            (output_dir / "auto_prepare_manifest.json").read_text(encoding="utf-8")
+        )
+        if auto_manifest.get("inputs", {}).get("research_report_industry_codes") != ["1238"]:
+            errors.append("一键准备清单必须记录显式东方财富行业代码")
+
+
+def validate_industry_no_data_scenario(errors: list[str]) -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        output_dir = Path(tmp) / "research-pack"
+        result = run_auto_prepare(
+            output_dir,
+            scenario="industry-no-data",
+            industry_codes=["1238"],
+        )
+        if result.returncode != 0:
+            errors.append(f"行业无数据场景退出码为 {result.returncode}: {result.stderr.strip()}")
+            return
+        rows = read_rows(output_dir / "research_reports.csv")
+        if len(rows) != 4 or any(row.get("scope_type") != "stock" for row in rows):
+            errors.append("单个行业无数据时必须保留全部成功的个股研报")
+        notices = [
+            row
+            for row in research_report_errors(output_dir)
+            if row.get("code") == "1238"
+        ]
+        if len(notices) != 1 or notices[0].get("stage") != "research_report_index_no_data":
+            errors.append("行业无数据必须按显式行业代码记录 research_report_index_no_data")
 
 
 def research_report_errors(output_dir: Path) -> list[dict[str, str]]:
@@ -278,27 +368,240 @@ def research_report_pdf_errors(output_dir: Path) -> list[dict[str, str]]:
 def run_independent_fetcher(
     output_dir: Path,
     scenario: str,
+    industry_codes: list[str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
+    command = [
+        sys.executable,
+        str(FETCHER),
+        "--peer-universe",
+        str(output_dir / "peer_universe.csv"),
+        "--output-dir",
+        str(output_dir),
+        "--as-of",
+        "2026-07-13",
+        "--source",
+        "fixture",
+        "--fixture-scenario",
+        scenario,
+    ]
+    for industry_code in industry_codes or []:
+        command.extend(["--industry-code", industry_code])
     return subprocess.run(
-        [
-            sys.executable,
-            str(FETCHER),
-            "--peer-universe",
-            str(output_dir / "peer_universe.csv"),
-            "--output-dir",
-            str(output_dir),
-            "--as-of",
-            "2026-07-13",
-            "--source",
-            "fixture",
-            "--fixture-scenario",
-            scenario,
-        ],
+        command,
         cwd=ROOT,
         check=False,
         capture_output=True,
         text=True,
     )
+
+
+def validate_multiple_industries_partial_failure(errors: list[str]) -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        output_dir = Path(tmp) / "research-pack"
+        result = run_auto_prepare(
+            output_dir,
+            scenario="industry-partial-failure",
+            industry_codes=["1238", "4567"],
+        )
+        if result.returncode != 0:
+            errors.append(f"多行业部分失败场景退出码为 {result.returncode}: {result.stderr.strip()}")
+            return
+        rows = read_rows(output_dir / "research_reports.csv")
+        stock_rows = [row for row in rows if row.get("scope_type") == "stock"]
+        industry_rows = [row for row in rows if row.get("scope_type") == "industry"]
+        if len(stock_rows) != 4:
+            errors.append("行业部分失败不得删除成功的个股研报")
+        if len(industry_rows) != 2 or {
+            row.get("industry_code") for row in industry_rows
+        } != {"4567"}:
+            errors.append("行业部分失败必须只保留成功的显式行业，不得增加其他行业")
+        industry_errors = [
+            row
+            for row in research_report_errors(output_dir)
+            if row.get("code") in {"1238", "4567"}
+        ]
+        if len(industry_errors) != 1 or (
+            industry_errors[0].get("code") != "1238"
+            or industry_errors[0].get("stage") != "research_report_index"
+        ):
+            errors.append("行业索引失败必须按失败行业代码记录 research_report_index")
+        downloaded = [
+            row
+            for row in industry_rows
+            if row.get("local_pdf_path") != "来源缺失"
+        ]
+        if len(downloaded) != 1:
+            errors.append("行业 PDF 上限必须按每个显式行业独立应用")
+
+        independent = run_independent_fetcher(
+            output_dir,
+            "industry-partial-failure",
+            ["1238", "4567"],
+        )
+        if independent.returncode != 0:
+            errors.append("部分行业失败且其他对象成功时独立抓取入口必须返回成功")
+
+
+def validate_shared_report_identity_and_pdf_reuse(errors: list[str]) -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        output_dir = Path(tmp) / "research-pack"
+        result = run_auto_prepare(
+            output_dir,
+            scenario="shared-report",
+            index_limit=1,
+            pdf_limit=1,
+            industry_codes=["1238"],
+        )
+        if result.returncode != 0:
+            errors.append(f"跨范围共享报告场景退出码为 {result.returncode}: {result.stderr.strip()}")
+            return
+        rows = read_rows(output_dir / "research_reports.csv")
+        by_report: dict[str, list[dict[str, str]]] = {}
+        for row in rows:
+            by_report.setdefault(row.get("report_id", ""), []).append(row)
+        shared = [group for group in by_report.values() if len(group) > 1]
+        if len(shared) != 1 or {row.get("scope_type") for row in shared[0]} != {
+            "stock",
+            "industry",
+        }:
+            errors.append("索引身份必须同时保留范围类型、对象标识和稳定报告 ID")
+            return
+        local_paths = {row.get("local_pdf_path") for row in shared[0]}
+        if len(local_paths) != 1 or "来源缺失" in local_paths:
+            errors.append("同一稳定报告 ID 的个股/行业索引必须复用同一本地 PDF")
+            return
+        shared_path = next(iter(local_paths))
+        material_files = list((output_dir / "research_reports").glob("*.pdf"))
+        if len(material_files) != 2:
+            errors.append(f"3 个范围对象含 1 个共享报告时应仅保存 2 份 PDF，实际 {len(material_files)}")
+
+        stock_only = run_independent_fetcher(output_dir, "success")
+        if stock_only.returncode != 0:
+            errors.append("跨范围复用场景的后续纯个股抓取失败")
+            return
+        shared_report_id = shared[0][0]["report_id"]
+        repeated_shared_rows = [
+            row
+            for row in read_rows(output_dir / "research_reports.csv")
+            if row.get("report_id") == shared_report_id
+        ]
+        if not repeated_shared_rows or repeated_shared_rows[0].get("local_pdf_path") != shared_path:
+            errors.append("后续纯个股抓取必须按稳定报告 ID 复用先前行业范围落盘的 PDF")
+
+
+def validate_multiple_industries_defaults(errors: list[str]) -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        output_dir = Path(tmp) / "research-pack"
+        output_dir.mkdir()
+        with (output_dir / "peer_universe.csv").open(
+            "w", newline="", encoding="utf-8"
+        ) as handle:
+            writer = csv.DictWriter(handle, fieldnames=["code", "name"])
+            writer.writeheader()
+            writer.writerow({"code": "300750.SZ", "name": "宁德时代"})
+        result = run_independent_fetcher(output_dir, "success", ["1238", "4567"])
+        if result.returncode != 0:
+            errors.append(f"独立入口多行业默认场景退出码为 {result.returncode}: {result.stderr.strip()}")
+            return
+        rows = read_rows(output_dir / "research_reports.csv")
+        industry_rows = [row for row in rows if row.get("scope_type") == "industry"]
+        counts: dict[str, int] = {}
+        downloaded: dict[str, int] = {}
+        for row in industry_rows:
+            code = row.get("industry_code", "")
+            counts[code] = counts.get(code, 0) + 1
+            if row.get("local_pdf_path") != "来源缺失":
+                downloaded[code] = downloaded.get(code, 0) + 1
+        if counts != {"1238": 3, "4567": 3}:
+            errors.append(f"多行业默认索引必须按每行业独立保留结果，实际 {counts}")
+        if downloaded != {"1238": 3, "4567": 3}:
+            errors.append(f"多行业默认必须按每行业下载最新 3 份 PDF，实际 {downloaded}")
+        for industry_code in ["1238", "4567"]:
+            keys = [
+                (row.get("publish_date", ""), row.get("report_id", ""))
+                for row in industry_rows
+                if row.get("industry_code") == industry_code
+            ]
+            if keys != sorted(
+                keys,
+                key=lambda item: (-int(item[0].replace("-", "")), item[1]),
+            ):
+                errors.append(f"行业 {industry_code} 未按发布日期降序、报告 ID 升序排序")
+        manifest = json.loads((output_dir / "source_manifest.json").read_text(encoding="utf-8"))
+        entries = {
+            item.get("file"): item
+            for item in manifest.get("files", [])
+            if isinstance(item, dict)
+        }
+        index_basis = str(entries.get("research_reports.csv", {}).get("period_or_basis", ""))
+        material_basis = str(entries.get("research_reports/", {}).get("period_or_basis", ""))
+        for token in ["730", "20", "1238", "4567"]:
+            if token not in index_basis:
+                errors.append(f"多行业默认索引来源口径缺少 `{token}`")
+        if "3" not in material_basis:
+            errors.append("多行业默认 PDF 来源口径缺少下载上限 3")
+
+
+def validate_industry_pdf_partial_failure(errors: list[str]) -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        output_dir = Path(tmp) / "research-pack"
+        result = run_auto_prepare(
+            output_dir,
+            scenario="pdf-partial-failure",
+            pdf_limit=2,
+            industry_codes=["1238"],
+        )
+        if result.returncode != 0:
+            errors.append(f"行业 PDF 部分失败场景退出码为 {result.returncode}: {result.stderr.strip()}")
+            return
+        industry_rows = [
+            row
+            for row in read_rows(output_dir / "research_reports.csv")
+            if row.get("scope_type") == "industry"
+        ]
+        if len(industry_rows) != 2:
+            errors.append("行业 PDF 失败不得删除对应行业索引行")
+        if len(
+            [row for row in industry_rows if row.get("local_pdf_path") == "来源缺失"]
+        ) != 1:
+            errors.append("行业 PDF 部分失败应保留一份成功并标记一份来源缺失")
+        industry_pdf_errors = [
+            row
+            for row in research_report_pdf_errors(output_dir)
+            if row.get("code") == "1238"
+        ]
+        if len(industry_pdf_errors) != 1:
+            errors.append("行业 PDF 失败必须按行业代码记录 research_report_pdf")
+
+
+def validate_all_stock_and_industry_requests_fail(errors: list[str]) -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        output_dir = Path(tmp) / "research-pack"
+        result = run_auto_prepare(
+            output_dir,
+            scenario="all-failure",
+            industry_codes=["1238", "4567"],
+        )
+        if result.returncode != 0:
+            errors.append("全部个股与行业索引失败时一键准备必须继续完成")
+            return
+        if "warning: fetch_a_share_research_reports.py exited 1" not in result.stderr:
+            errors.append("全部个股与行业索引失败时一键准备必须输出可选阶段告警")
+        report_errors = research_report_errors(output_dir)
+        if len(report_errors) != 4 or {row.get("code") for row in report_errors} != {
+            "300750.SZ",
+            "002594.SZ",
+            "1238",
+            "4567",
+        }:
+            errors.append("全部失败时必须按每个股票和显式行业保留索引错误")
+        independent = run_independent_fetcher(
+            output_dir,
+            "all-failure",
+            ["1238", "4567"],
+        )
+        if independent.returncode == 0:
+            errors.append("全部个股与显式行业索引请求失败时独立入口必须返回非零")
 
 
 def validate_no_data_scenario(errors: list[str]) -> None:
@@ -647,6 +950,7 @@ def validate_defaults_and_help(errors: list[str]) -> None:
         "--limit-per-security",
         "--pdf-limit-per-security",
         "--skip-pdf-download",
+        "--industry-code",
     ]:
         if token not in help_result.stdout:
             errors.append(f"独立研报抓取入口 --help 缺少 {token}")
@@ -698,6 +1002,12 @@ def validate_research_report_fetcher() -> list[str]:
     errors: list[str] = []
     validate_defaults_and_help(errors)
     validate_success_scenario(errors)
+    validate_single_industry_scenario(errors)
+    validate_industry_no_data_scenario(errors)
+    validate_multiple_industries_partial_failure(errors)
+    validate_shared_report_identity_and_pdf_reuse(errors)
+    validate_multiple_industries_defaults(errors)
+    validate_industry_pdf_partial_failure(errors)
     validate_no_data_scenario(errors)
     validate_null_data_response_is_no_data(errors)
     validate_partial_failure_scenario(errors)
@@ -708,6 +1018,7 @@ def validate_research_report_fetcher() -> list[str]:
     validate_pdf_directory_escape_is_rejected(errors)
     validate_pdf_temporary_symlink_escape_is_rejected(errors)
     validate_all_failure_scenario(errors)
+    validate_all_stock_and_industry_requests_fail(errors)
     return errors
 
 

@@ -45,6 +45,7 @@ REQUIRED_TOKENS = [
     "--research-report-limit",
     "--research-report-pdf-limit",
     "--skip-research-report-pdf-download",
+    "--research-report-industry-code",
     "candidate_peer_universe.csv",
     "peer_universe.csv",
     "market_snapshot.csv",
@@ -102,6 +103,7 @@ def validate_auto_prepare() -> list[str]:
         "--force",
         "--research-report-pdf-limit",
         "--skip-research-report-pdf-download",
+        "--research-report-industry-code",
     ]:
         if token not in help_result.stdout:
             errors.append(f"{SCRIPT.relative_to(ROOT)} --help missing {token}")

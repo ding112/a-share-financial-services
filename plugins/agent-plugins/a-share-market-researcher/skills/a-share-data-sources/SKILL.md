@@ -97,7 +97,7 @@ AkShare 股票、指数、宏观、基金、债券和期货接口，只记录数
 | `fetch_a_share_northbound_margin.py` | `northbound_flow.csv`, `northbound_holdings.csv`, `margin_trading.csv` | 北向资金、融资融券 |
 | `fetch_a_share_board_sector.py` | `board_sector_context.csv` | 概念板块和行业板块实时行情 |
 | `fetch_a_share_fund_holdings.py` | `fund_heavy_stocks.csv`, `etf_list.csv` | 基金重仓股、ETF 行情 |
-| `fetch_a_share_research_reports.py` | `research_reports.csv`, `research_reports/` | 股票池对应的东方财富个股研报索引和限量 PDF 材料 |
+| `fetch_a_share_research_reports.py` | `research_reports.csv`, `research_reports/` | 股票池个股及显式东方财富行业代码对应的研报索引和限量 PDF 材料 |
 
 抓取器输出的 `source_manifest.json` 必须保留来源类型、来源名称、访问时间、
 报告期或口径、验证状态和缺失行为。下游技能不得把公开行情或公开财务摘要
@@ -108,21 +108,25 @@ AkShare 股票、指数、宏观、基金、债券和期货接口，只记录数
 接口失败或字段无法解析必须让命令返回非 0，并在 `fetch_errors.csv` 中保留
 失败原因。
 
-`scripts/fetch_a_share_research_reports.py` 是独立研报索引与 PDF 抓取入口。它只按
-`peer_universe.csv` 中的证券代码检索东方财富个股研报，不请求行业研报，也
-不从主题名称推断东方财富行业代码。默认截至 `as-of` 回溯 730 天，每个证券
-最多保留 20 条；按发布日期降序、稳定报告 ID 升序排序并去重。东方财富请求
-使用明确 User-Agent、30 秒超时、串行节流和最多 3 次有限重试。
+`scripts/fetch_a_share_research_reports.py` 是独立研报索引与 PDF 抓取入口。它默认只按
+`peer_universe.csv` 中的证券代码检索东方财富个股研报；只有使用者重复传入一个或
+多个 `--industry-code` 时，才额外请求这些东方财富行业代码对应的行业研报。不提供
+该参数时不发起行业请求，也不从主题名称、概念板块、股票池或自然语言推断行业代码。
+默认截至 `as-of` 回溯 730 天，每个证券或显式行业最多保留 20 条；按发布日期降序、
+稳定报告 ID 升序排序。索引身份由范围类型、对象标识和报告 ID 共同确定，同一报告 ID
+对应的 PDF 内容跨范围复用。东方财富请求使用明确 User-Agent、30 秒超时、串行节流和
+最多 3 次有限重试。
 
 研报索引和材料目录统一标记为 `third_party`、`待验证`。默认按同一稳定排序
-下载每证券最新 3 份 PDF；可通过 `--pdf-limit-per-security` 调整上限，或用
+下载每个证券或显式行业最新 3 份 PDF；可通过 `--pdf-limit-per-security` 调整上限，或用
 `--skip-pdf-download` 只保留索引。有效既有文件会直接复用；响应状态、最小
 大小或 `%PDF-` 文件签名不合格时不会落盘。PDF 文件名包含稳定报告 ID 和清理、
 截断后的标题，索引只写数据包内相对路径。检索成功但无记录时在
 `fetch_errors.csv` 写 `research_report_index_no_data`；请求或解析失败时写
 `research_report_index`；单份 PDF 失败时保留索引行、将 `local_pdf_path` 写为
-`来源缺失` 并记录 `research_report_pdf`。部分证券失败仍返回成功，全部证券
-索引请求失败时独立入口写完空索引、来源清单和错误记录后返回非零。端点和字段映射参考
+`来源缺失` 并记录 `research_report_pdf`。单个证券或行业失败时保留其他对象的成功
+结果；全部证券与显式行业索引请求失败时，独立入口写完空索引、来源清单和错误记录后
+返回非零。端点和字段映射参考
 Apache-2.0 项目 `a-stock-data` 与 AkShare 公开实现，本项目使用标准库按自身
 契约重新实现，不把外部项目作为运行时依赖。
 
@@ -397,12 +401,12 @@ ST、`*ST` 或退市风险的公司，最多保留 15 只。少于 8 只时可�
 
 | 字段 | 含义 |
 |---|---|
-| `report_id` | 东方财富稳定研报 ID，也是去重身份 |
-| `scope_type` | 当前固定为 `stock`；本阶段不请求行业研报 |
-| `security_code` | 与 `peer_universe.csv` 匹配的标准 A 股证券代码 |
-| `security_name` | 证券简称 |
-| `industry_code` | 源记录中的个股行业代码，缺失时留空 |
-| `industry_name` | 源记录中的个股行业名称，缺失时留空 |
+| `report_id` | 东方财富稳定研报 ID；与范围类型、对象标识共同构成索引身份，并用于复用 PDF |
+| `scope_type` | `stock`（个股）或 `industry`（显式行业） |
+| `security_code` | 个股研报为与 `peer_universe.csv` 匹配的标准 A 股证券代码；行业研报留空 |
+| `security_name` | 个股研报的证券简称；行业研报留空 |
+| `industry_code` | 个股研报为源记录中的行业代码；行业研报为使用者显式提供的东方财富行业代码 |
+| `industry_name` | 源记录中的个股或行业名称，缺失时留空 |
 | `title` | 研报标题 |
 | `institution` | 发布机构简称 |
 | `publish_date` | 发布日期 |
@@ -415,7 +419,7 @@ ST、`*ST` 或退市风险的公司，最多保留 15 只。少于 8 只时可�
 | `source_type` | 固定为 `third_party` |
 | `source_name` | 固定为 `东方财富研报` |
 | `verification_status` | 固定为 `待验证` |
-| `basis` | `as-of`、回溯天数、每证券上限和使用边界 |
+| `basis` | `as-of`、回溯天数、每证券或显式行业上限和使用边界 |
 
 ### Markdown evidence files
 

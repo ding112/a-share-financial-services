@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""为 A 股 research-pack 抓取东方财富个股研报索引和限量 PDF。
+"""为 A 股 research-pack 抓取东方财富个股/显式行业研报索引和限量 PDF。
 
 东方财富端点与字段映射参考了 Apache-2.0 项目 ``a-stock-data`` 和项目现有
 AkShare 目录；本实现使用标准库重新实现，并以本项目的来源、错误和输出契约
@@ -27,6 +27,9 @@ SOURCE_NAME = "东方财富研报"
 SOURCE_KEY = "eastmoney_research_report"
 REPORT_API = "https://reportapi.eastmoney.com/report/list"
 DETAIL_URL_TEMPLATE = "https://data.eastmoney.com/report/zw_stock.jshtml?encodeUrl={encoded_url}"
+INDUSTRY_DETAIL_URL_TEMPLATE = (
+    "https://data.eastmoney.com/report/zw_industry.jshtml?encodeUrl={encoded_url}"
+)
 PDF_URL_TEMPLATE = "https://pdf.dfcfw.com/pdf/H3_{report_id}_1.pdf"
 USER_AGENT = "Mozilla/5.0 a-share-market-researcher/0.1"
 REQUEST_TIMEOUT_SECONDS = 30
@@ -89,18 +92,24 @@ def parse_args() -> argparse.Namespace:
         "--limit-per-security",
         type=int,
         default=20,
-        help="每个证券最多保留的研报数，默认 20。",
+        help="每个证券或显式行业最多保留的研报数，默认 20。",
     )
     parser.add_argument(
         "--pdf-limit-per-security",
         type=int,
         default=3,
-        help="每个证券最多下载的最新 PDF 数，默认 3。",
+        help="每个证券或显式行业最多下载的最新 PDF 数，默认 3。",
     )
     parser.add_argument(
         "--skip-pdf-download",
         action="store_true",
         help="跳过 PDF 下载，但仍生成研报索引和稳定材料目录。",
+    )
+    parser.add_argument(
+        "--industry-code",
+        action="append",
+        default=[],
+        help="显式东方财富行业代码；可重复提供，不提供时不请求行业研报。",
     )
     parser.add_argument(
         "--source",
@@ -117,6 +126,9 @@ def parse_args() -> argparse.Namespace:
             "all-failure",
             "pdf-partial-failure",
             "pdf-non-pdf",
+            "industry-no-data",
+            "industry-partial-failure",
+            "shared-report",
         ],
         default="success",
         help="fixture 离线场景。",
@@ -273,6 +285,52 @@ def fetch_eastmoney_index(
     return records
 
 
+def fetch_eastmoney_industry_index(
+    industry_code: str,
+    begin_date: dt.date,
+    end_date: dt.date,
+    limit_per_industry: int,
+) -> list[dict[str, Any]]:
+    page_size = min(500, max(100, limit_per_industry * 2))
+    records: list[dict[str, Any]] = []
+    page = 1
+    while True:
+        params = {
+            "industryCode": industry_code,
+            "pageSize": str(page_size),
+            "industry": "*",
+            "rating": "*",
+            "ratingChange": "*",
+            "beginTime": begin_date.isoformat(),
+            "endTime": end_date.isoformat(),
+            "pageNo": str(page),
+            "fields": "",
+            "qType": "1",
+            "orgCode": "",
+            "code": "",
+            "rcode": "",
+            "p": str(page),
+            "pageNum": str(page),
+            "pageNumber": str(page),
+        }
+        payload = request_json(params)
+        page_rows = payload.get("data")
+        if page_rows is None:
+            page_rows = []
+        elif not isinstance(page_rows, list):
+            raise ValueError("Eastmoney industry report response missing data array")
+        if not page_rows:
+            break
+        if any(not isinstance(row, dict) for row in page_rows):
+            raise ValueError("Eastmoney industry report response contains non-object records")
+        records.extend(page_rows)
+        total_pages = int(payload.get("TotalPage") or 1)
+        if page >= total_pages or len(records) >= limit_per_industry * 2:
+            break
+        page += 1
+    return records
+
+
 def fixture_index(
     peer: dict[str, str],
     as_of: dt.date,
@@ -311,6 +369,50 @@ def fixture_index(
             "indvInduCode": f"fixture-industry-{suffix}",
             "indvInduName": "fixture 行业",
             "encodeUrl": f"fixture-{symbol}-{suffix}",
+        }
+
+    duplicate = record("B", newest_date)
+    return [
+        duplicate,
+        record("A", newest_date),
+        record("C", older_date),
+        dict(duplicate),
+        record("OLD", outside_date),
+    ]
+
+
+def fixture_industry_index(
+    industry_code: str,
+    as_of: dt.date,
+    lookback_days: int,
+    scenario: str,
+    industry_index: int,
+) -> list[dict[str, Any]]:
+    if scenario == "all-failure":
+        raise RuntimeError("fixture industry research report index failure")
+    if scenario == "industry-partial-failure" and industry_index == 0:
+        raise RuntimeError("fixture industry research report index failure")
+    if scenario == "industry-no-data":
+        return []
+
+    newest_date = (as_of - dt.timedelta(days=1)).isoformat()
+    older_date = (as_of - dt.timedelta(days=2)).isoformat()
+    outside_date = (as_of - dt.timedelta(days=lookback_days + 1)).isoformat()
+
+    def record(suffix: str, publish_date: str) -> dict[str, Any]:
+        report_id = f"IP{as_of.strftime('%Y%m%d')}{industry_code}{suffix}"
+        if scenario == "shared-report" and industry_index == 0 and suffix == "A":
+            report_id = f"AP{as_of.strftime('%Y%m%d')}300750A"
+        return {
+            "infoCode": report_id,
+            "industryCode": industry_code,
+            "industryName": f"fixture 行业 {industry_code}",
+            "title": f"fixture 行业 {industry_code} 研报 {suffix}",
+            "orgSName": "fixture 券商",
+            "publishDate": publish_date,
+            "reportType": "行业研究",
+            "emRatingName": "增持",
+            "encodeUrl": f"fixture-industry-{industry_code}-{suffix}",
         }
 
     duplicate = record("B", newest_date)
@@ -377,20 +479,90 @@ def normalize_record(
     }
 
 
+def normalize_industry_record(
+    record: dict[str, Any],
+    industry_code: str,
+    begin_date: dt.date,
+    end_date: dt.date,
+    basis: str,
+) -> dict[str, str] | None:
+    report_id = str(record.get("infoCode") or "").strip()
+    if not report_id:
+        raise ValueError("industry research report record missing infoCode")
+    publish_date = dt.date.fromisoformat(str(record.get("publishDate") or "")[:10])
+    if publish_date < begin_date or publish_date > end_date:
+        return None
+    title = str(record.get("title") or "").strip()
+    if not title:
+        raise ValueError(f"industry research report {report_id} missing title")
+    returned_industry_code = str(record.get("industryCode") or industry_code).strip()
+    if returned_industry_code != industry_code:
+        raise ValueError(
+            f"industry research report {report_id} returned unexpected industry code "
+            f"{returned_industry_code} for {industry_code}"
+        )
+    raw_detail_url = str(record.get("encodeUrl") or "").strip()
+    if raw_detail_url.startswith(("http://", "https://")):
+        detail_url = raw_detail_url
+    elif raw_detail_url:
+        detail_url = INDUSTRY_DETAIL_URL_TEMPLATE.format(
+            encoded_url=urllib.parse.quote(raw_detail_url, safe="")
+        )
+    else:
+        detail_url = MISSING
+    forecast = {field: record.get(field) for field in FORECAST_FIELDS}
+    return {
+        "report_id": report_id,
+        "scope_type": "industry",
+        "security_code": "",
+        "security_name": "",
+        "industry_code": industry_code,
+        "industry_name": str(record.get("industryName") or ""),
+        "title": title,
+        "institution": str(record.get("orgSName") or ""),
+        "publish_date": publish_date.isoformat(),
+        "report_type": str(record.get("reportType") or ""),
+        "rating": str(record.get("emRatingName") or record.get("sRatingName") or ""),
+        "profit_forecast_raw": json.dumps(
+            forecast,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ),
+        "detail_url": detail_url,
+        "pdf_url": PDF_URL_TEMPLATE.format(report_id=report_id),
+        "local_pdf_path": MISSING,
+        "source_type": "third_party",
+        "source_name": SOURCE_NAME,
+        "verification_status": "待验证",
+        "basis": basis,
+    }
+
+
 def stable_sort(rows: list[dict[str, str]]) -> list[dict[str, str]]:
     return sorted(
         rows,
-        key=lambda row: (-int(row["publish_date"].replace("-", "")), row["report_id"]),
+        key=lambda row: (
+            -int(row["publish_date"].replace("-", "")),
+            row["report_id"],
+            row["scope_type"],
+            row["security_code"] or row["industry_code"],
+        ),
     )
 
 
 def deduplicate(rows: list[dict[str, str]]) -> list[dict[str, str]]:
     result: list[dict[str, str]] = []
-    seen: set[str] = set()
+    seen: set[tuple[str, str, str]] = set()
     for row in stable_sort(rows):
-        if row["report_id"] in seen:
+        identity = (
+            row["scope_type"],
+            row["security_code"] or row["industry_code"],
+            row["report_id"],
+        )
+        if identity in seen:
             continue
-        seen.add(row["report_id"])
+        seen.add(identity)
         result.append(row)
     return result
 
@@ -444,6 +616,18 @@ def valid_existing_pdf(path: Path) -> bool:
         return False
     with path.open("rb") as handle:
         return handle.read(5) == b"%PDF-"
+
+
+def reusable_pdf_for_report(material_dir: Path, report_id: str) -> Path | None:
+    report_id_prefix = sanitize_filename_component(report_id, 48, 64) + "_"
+    for candidate in sorted(material_dir.iterdir()):
+        if (
+            candidate.name.startswith(report_id_prefix)
+            and candidate.suffix.lower() == ".pdf"
+            and valid_existing_pdf(candidate)
+        ):
+            return candidate
+    return None
 
 
 def request_pdf_payload(url: str) -> bytes:
@@ -506,6 +690,9 @@ def materialize_pdf(
     destination, relative_path = pdf_destination(output_dir, row)
     if valid_existing_pdf(destination):
         return relative_path
+    reusable = reusable_pdf_for_report(destination.parent, row["report_id"])
+    if reusable is not None:
+        return (Path("research_reports") / reusable.name).as_posix()
     if destination.exists() or destination.is_symlink():
         destination.unlink()
 
@@ -541,13 +728,18 @@ def download_selected_pdfs(
         return []
 
     selected_counts: dict[str, int] = {}
+    materialized_by_report_id: dict[str, str] = {}
     errors: list[dict[str, str]] = []
     for row in rows:
-        scope_key = row["security_code"]
+        scope_key = f"{row['scope_type']}:{row['security_code'] or row['industry_code']}"
         selected_count = selected_counts.get(scope_key, 0)
         if selected_count >= pdf_limit_per_security:
             continue
         selected_counts[scope_key] = selected_count + 1
+        reused_path = materialized_by_report_id.get(row["report_id"])
+        if reused_path:
+            row["local_pdf_path"] = reused_path
+            continue
         try:
             row["local_pdf_path"] = materialize_pdf(
                 row,
@@ -555,11 +747,12 @@ def download_selected_pdfs(
                 source,
                 fixture_scenario,
             )
+            materialized_by_report_id[row["report_id"]] = row["local_pdf_path"]
         except Exception as exc:
             row["local_pdf_path"] = MISSING
             errors.append(
                 {
-                    "code": row["security_code"],
+                    "code": row["security_code"] or row["industry_code"],
                     "source": SOURCE_KEY,
                     "stage": "research_report_pdf",
                     "error": f"{row['report_id']}: {exc}",
@@ -580,14 +773,35 @@ def write_source_manifest_entries(
     limit_per_security: int,
     pdf_limit_per_security: int,
     skip_pdf_download: bool,
+    industry_codes: list[str],
 ) -> None:
     path = output_dir / "source_manifest.json"
     data = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {"files": []}
     files = data.setdefault("files", [])
+    if industry_codes:
+        scope_basis = f"个股与显式行业（{','.join(industry_codes)}）"
+        object_limit = f"每个证券或显式行业最多 {limit_per_security} 条"
+        deduplication_basis = "按范围类型、对象标识和稳定报告 ID 去重"
+        pdf_object_limit = "每个证券或显式行业"
+        index_missing_behavior = (
+            "无数据写 research_report_index_no_data；请求或解析失败写 research_report_index；"
+            "不得用于财务摘要、行业规模、业务暴露、盈利预测、估值排序或 idea shortlist"
+        )
+    else:
+        scope_basis = ""
+        object_limit = f"每个证券最多 {limit_per_security} 条"
+        deduplication_basis = "按稳定报告 ID 去重"
+        pdf_object_limit = "每个证券"
+        index_missing_behavior = (
+            "无数据写 research_report_index_no_data；请求或解析失败写 research_report_index；"
+            "不得用于财务摘要、业务暴露、估值排序或 idea shortlist"
+        )
     basis = (
-        f"截至 {as_of[:10]} 回溯 {lookback_days} 天；每个证券最多 {limit_per_security} 条；"
-        "发布日期降序、报告 ID 升序；按稳定报告 ID 去重"
+        f"截至 {as_of[:10]} 回溯 {lookback_days} 天；{object_limit}；"
+        f"发布日期降序、报告 ID 升序；{deduplication_basis}"
     )
+    if scope_basis:
+        basis = f"{scope_basis}；{basis}"
     append_manifest_entry(
         files,
         {
@@ -597,10 +811,7 @@ def write_source_manifest_entries(
             "data_time": as_of[:10],
             "period_or_basis": basis,
             "verification_status": "待验证",
-            "missing_behavior": (
-                "无数据写 research_report_index_no_data；请求或解析失败写 research_report_index；"
-                "不得用于财务摘要、业务暴露、估值排序或 idea shortlist"
-            ),
+            "missing_behavior": index_missing_behavior,
         },
     )
     append_manifest_entry(
@@ -611,7 +822,8 @@ def write_source_manifest_entries(
             "source_name": "东方财富研报 PDF",
             "data_time": as_of[:10],
             "period_or_basis": (
-                f"每个证券最多下载最新 {pdf_limit_per_security} 份 PDF；"
+                (f"{scope_basis}；" if scope_basis else "")
+                + f"{pdf_object_limit}最多下载最新 {pdf_limit_per_security} 份 PDF；"
                 f"跳过下载={'是' if skip_pdf_download else '否'}；"
                 "按研报索引的发布日期降序、报告 ID 升序选择"
             ),
@@ -650,10 +862,17 @@ def run_pipeline(args: argparse.Namespace) -> int:
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "research_reports").mkdir(parents=True, exist_ok=True)
     peers = read_peer_universe(Path(args.peer_universe))
+    industry_codes = list(dict.fromkeys(code.strip() for code in args.industry_code))
+    if any(not code for code in industry_codes):
+        raise ValueError("--industry-code must be non-empty")
     begin_date, end_date = search_window(args.as_of, args.lookback_days)
     basis = (
         f"截至 {end_date.isoformat()} 回溯 {args.lookback_days} 天；"
         f"每个证券最多 {args.limit_per_security} 条；第三方研报仅作待验证线索"
+    )
+    industry_basis = (
+        f"截至 {end_date.isoformat()} 回溯 {args.lookback_days} 天；"
+        f"每个显式行业最多 {args.limit_per_security} 条；第三方研报仅作待验证线索"
     )
 
     report_rows: list[dict[str, str]] = []
@@ -706,6 +925,62 @@ def run_pipeline(args: argparse.Namespace) -> int:
                 }
             )
 
+    for industry_index, industry_code in enumerate(industry_codes):
+        try:
+            if args.source == "fixture":
+                raw_rows = fixture_industry_index(
+                    industry_code,
+                    end_date,
+                    args.lookback_days,
+                    args.fixture_scenario,
+                    industry_index,
+                )
+            else:
+                raw_rows = fetch_eastmoney_industry_index(
+                    industry_code,
+                    begin_date,
+                    end_date,
+                    args.limit_per_security,
+                )
+            normalized = [
+                row
+                for raw_row in raw_rows
+                if (
+                    row := normalize_industry_record(
+                        raw_row,
+                        industry_code,
+                        begin_date,
+                        end_date,
+                        industry_basis,
+                    )
+                )
+                is not None
+            ]
+            selected = deduplicate(normalized)[: args.limit_per_security]
+            if not selected:
+                errors.append(
+                    {
+                        "code": industry_code,
+                        "source": SOURCE_KEY,
+                        "stage": "research_report_index_no_data",
+                        "error": (
+                            f"截至 {end_date.isoformat()} 回溯 {args.lookback_days} 天"
+                            "未返回可用行业研报"
+                        ),
+                    }
+                )
+            report_rows.extend(selected)
+        except Exception as exc:
+            failed_requests += 1
+            errors.append(
+                {
+                    "code": industry_code,
+                    "source": SOURCE_KEY,
+                    "stage": "research_report_index",
+                    "error": str(exc),
+                }
+            )
+
     report_rows = deduplicate(report_rows)
     errors.extend(
         download_selected_pdfs(
@@ -725,13 +1000,14 @@ def run_pipeline(args: argparse.Namespace) -> int:
         args.limit_per_security,
         args.pdf_limit_per_security,
         args.skip_pdf_download,
+        industry_codes,
     )
     write_fetch_errors(output_dir, errors)
 
     print(f"wrote research report index: {output_dir}")
     if errors:
         print(f"completed with {len(errors)} research report notice(s)", file=sys.stderr)
-    return 1 if failed_requests == len(peers) else 0
+    return 1 if failed_requests == len(peers) + len(industry_codes) else 0
 
 
 def main() -> int:

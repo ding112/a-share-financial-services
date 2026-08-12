@@ -113,8 +113,8 @@ The recommended package contains these files:
 | `market_context_limit_up.csv` | No | Limit-up stock pool and reasons. |
 | `macro_context.csv` | No | GDP, CPI, PPI, PMI macro indicators. |
 | `company_details.csv` | No | Main business composition, company profile, share structure. |
-| `research_reports.csv` | No | 东方财富个股研报索引，固定标记为 `third_party`、`待验证`，不进入财务摘要、业务暴露、估值排序或 idea shortlist。 |
-| `research_reports/` | No | 限量研报 PDF 材料目录；默认每证券最新 3 份，固定标记为 `third_party`、`待验证`。 |
+| `research_reports.csv` | No | 东方财富个股及显式行业研报共用索引，固定标记为 `third_party`、`待验证`，不进入财务摘要、业务暴露、行业规模、估值排序或 idea shortlist。 |
+| `research_reports/` | No | 共用的限量研报 PDF 材料目录；默认每证券或显式行业最新 3 份，固定标记为 `third_party`、`待验证`。 |
 | `northbound_flow.csv` | No | Northbound capital net flow trend. |
 | `northbound_holdings.csv` | No | Northbound stock holdings. |
 | `margin_trading.csv` | No | Margin trading balance and buy amount. |
@@ -206,7 +206,13 @@ python -m pip install -r requirements.txt
   --as-of 2026-05-22
 ```
 
-一键入口默认下载每个证券最新 3 份研报 PDF，可用
+一键入口默认只按股票池检索个股研报，不会从主题、概念板块或股票池推断行业代码。
+确实掌握东方财富行业代码时，可重复传入
+`--research-report-industry-code 1238` 显式补充一个或多个行业；未提供时不发起行业
+研报请求。个股与行业研报写入同一索引和材料目录，通过 `scope_type` 及证券/行业
+字段区分。
+
+一键入口默认下载每个证券或显式行业最新 3 份研报 PDF，可用
 `--research-report-pdf-limit` 调整上限，或用
 `--skip-research-report-pdf-download` 只生成索引。PDF 只写入默认被 Git 忽略的
 `out/` 运行目录；有效既有文件会在重复运行时复用。下载成功仅表示第三方材料

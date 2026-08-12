@@ -150,18 +150,24 @@ def parse_args() -> argparse.Namespace:
         "--research-report-limit",
         type=int,
         default=20,
-        help="Maximum research report index rows per security. Defaults to 20.",
+        help="Maximum research report index rows per security or explicit industry. Defaults to 20.",
     )
     parser.add_argument(
         "--research-report-pdf-limit",
         type=int,
         default=3,
-        help="Maximum latest research report PDFs per security. Defaults to 3.",
+        help="Maximum latest research report PDFs per security or explicit industry. Defaults to 3.",
     )
     parser.add_argument(
         "--skip-research-report-pdf-download",
         action="store_true",
         help="Keep the research report index but skip PDF downloads.",
+    )
+    parser.add_argument(
+        "--research-report-industry-code",
+        action="append",
+        default=[],
+        help="Explicit Eastmoney industry code; repeat for multiple industries. No inference is performed.",
     )
     parser.add_argument(
         "--research-report-source",
@@ -177,6 +183,9 @@ def parse_args() -> argparse.Namespace:
             "all-failure",
             "pdf-partial-failure",
             "pdf-non-pdf",
+            "industry-no-data",
+            "industry-partial-failure",
+            "shared-report",
         ],
         default="success",
         help="Offline research report scenario used with the fixture source.",
@@ -549,6 +558,10 @@ def write_auto_prepare_manifest(
             "概念/板块成分只作线索，业务暴露必须标记为待验证。",
         ],
     }
+    if args.research_report_industry_code:
+        payload["inputs"]["research_report_industry_codes"] = list(
+            dict.fromkeys(code.strip() for code in args.research_report_industry_code)
+        )
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
@@ -685,6 +698,8 @@ def run_research_report_fetcher(args: argparse.Namespace, peer_path: Path, outpu
     ]
     if args.skip_research_report_pdf_download:
         command.append("--skip-pdf-download")
+    for industry_code in args.research_report_industry_code:
+        command.extend(["--industry-code", industry_code])
     _run_optional_fetcher(
         "fetch_a_share_research_reports.py",
         command,
