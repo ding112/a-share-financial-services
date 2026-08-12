@@ -33,6 +33,7 @@ REQUIRED_TOKENS = [
     "def fetch_akshare_candidates",
     "def write_auto_prepare_manifest",
     "def run_public_data_fetcher",
+    "def run_research_report_fetcher",
     "def main",
     "--theme",
     "--output-dir",
@@ -40,10 +41,14 @@ REQUIRED_TOKENS = [
     "--peer-universe",
     "--force",
     "--universe-source",
+    "--research-report-lookback-days",
+    "--research-report-limit",
     "candidate_peer_universe.csv",
     "peer_universe.csv",
     "market_snapshot.csv",
     "financial_summary.csv",
+    "research_reports.csv",
+    "research_reports/",
     "source_manifest.json",
     "fetch_errors.csv",
     "auto_prepare_manifest.json",
@@ -156,12 +161,15 @@ def validate_auto_prepare() -> list[str]:
             "peer_universe.csv",
             "market_snapshot.csv",
             "financial_summary.csv",
+            "research_reports.csv",
             "source_manifest.json",
             "fetch_errors.csv",
             "auto_prepare_manifest.json",
         ]:
             if not (output_dir / filename).is_file():
                 errors.append(f"auto prepare output missing {filename}")
+        if not (output_dir / "research_reports").is_dir():
+            errors.append("auto prepare output missing research_reports/")
 
         peer_path = output_dir / "peer_universe.csv"
         if peer_path.is_file():
@@ -245,7 +253,11 @@ def validate_auto_prepare() -> list[str]:
             errors.append(f"missing {source.relative_to(ROOT)}")
             continue
         source_text = source.read_text(encoding="utf-8")
-        for token in ["auto_prepare_a_share_research_pack.py", "candidate_peer_universe.csv"]:
+        for token in [
+            "auto_prepare_a_share_research_pack.py",
+            "candidate_peer_universe.csv",
+            "research_reports.csv",
+        ]:
             if token not in source_text:
                 errors.append(f"{source.relative_to(ROOT)} missing `{token}`")
 

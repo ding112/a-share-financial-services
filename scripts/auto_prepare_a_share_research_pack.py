@@ -22,6 +22,7 @@ MARKET_CONTEXT_FETCHER = ROOT / "scripts/fetch_a_share_market_context.py"
 MACRO_CONTEXT_FETCHER = ROOT / "scripts/fetch_a_share_macro_context.py"
 COMPANY_DETAILS_FETCHER = ROOT / "scripts/fetch_a_share_company_details.py"
 ANNUAL_REPORT_FETCHER = ROOT / "scripts/fetch_a_share_annual_reports.py"
+RESEARCH_REPORT_FETCHER = ROOT / "scripts/fetch_a_share_research_reports.py"
 NORTHBOUND_MARGIN_FETCHER = ROOT / "scripts/fetch_a_share_northbound_margin.py"
 BOARD_SECTOR_FETCHER = ROOT / "scripts/fetch_a_share_board_sector.py"
 FUND_HOLDINGS_FETCHER = ROOT / "scripts/fetch_a_share_fund_holdings.py"
@@ -60,6 +61,8 @@ AUTO_OUTPUTS = [
     "company_details.csv",
     "annual_reports.csv",
     "annual_reports/",
+    "research_reports.csv",
+    "research_reports/",
     "northbound_flow.csv",
     "northbound_holdings.csv",
     "margin_trading.csv",
@@ -136,6 +139,29 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=15,
         help="Maximum companies to include in peer_universe.csv.",
+    )
+    parser.add_argument(
+        "--research-report-lookback-days",
+        type=int,
+        default=730,
+        help="Research report lookback window ending at --as-of. Defaults to 730 days.",
+    )
+    parser.add_argument(
+        "--research-report-limit",
+        type=int,
+        default=20,
+        help="Maximum research report index rows per security. Defaults to 20.",
+    )
+    parser.add_argument(
+        "--research-report-source",
+        choices=["eastmoney", "fixture"],
+        help="Research report source. Defaults to fixture for fixture universes, otherwise Eastmoney.",
+    )
+    parser.add_argument(
+        "--research-report-fixture-scenario",
+        choices=["success", "no-data", "partial-failure", "all-failure"],
+        default="success",
+        help="Offline research report scenario used with the fixture source.",
     )
     return parser.parse_args()
 
@@ -492,6 +518,9 @@ def write_auto_prepare_manifest(
             "universe_source": source,
             "market_source": args.market_source,
             "financial_source": args.financial_source,
+            "research_report_source": resolved_research_report_source(args),
+            "research_report_lookback_days": args.research_report_lookback_days,
+            "research_report_limit": args.research_report_limit,
         },
         "outputs": {filename: filename for filename in AUTO_OUTPUTS},
         "selection": selection,
@@ -606,6 +635,37 @@ def run_annual_report_fetcher(args: argparse.Namespace, peer_path: Path, output_
     )
 
 
+def resolved_research_report_source(args: argparse.Namespace) -> str:
+    return args.research_report_source or (
+        "fixture" if args.universe_source == "fixture" else "eastmoney"
+    )
+
+
+def run_research_report_fetcher(args: argparse.Namespace, peer_path: Path, output_dir: Path) -> None:
+    source = resolved_research_report_source(args)
+    _run_optional_fetcher(
+        "fetch_a_share_research_reports.py",
+        [
+            sys.executable,
+            str(RESEARCH_REPORT_FETCHER),
+            "--peer-universe",
+            str(peer_path),
+            "--output-dir",
+            str(output_dir),
+            "--as-of",
+            args.as_of,
+            "--lookback-days",
+            str(args.research_report_lookback_days),
+            "--limit-per-security",
+            str(args.research_report_limit),
+            "--source",
+            source,
+            "--fixture-scenario",
+            args.research_report_fixture_scenario,
+        ],
+    )
+
+
 def run_northbound_margin_fetcher(args: argparse.Namespace, output_dir: Path) -> None:
     _run_optional_fetcher(
         "fetch_a_share_northbound_margin.py",
@@ -684,6 +744,10 @@ def main() -> int:
     args = parse_args()
     if args.max_peers < 1:
         raise SystemExit("--max-peers must be positive")
+    if args.research_report_lookback_days < 1:
+        raise SystemExit("--research-report-lookback-days must be positive")
+    if args.research_report_limit < 1:
+        raise SystemExit("--research-report-limit must be positive")
     output_dir = Path(args.output_dir) if args.output_dir else stage_dir(args.theme, "research-pack")
     output_dir = output_dir.resolve()
     log_step(f"starting auto research-pack: theme={args.theme} output_dir={output_dir}")
@@ -714,6 +778,7 @@ def main() -> int:
     run_board_sector_fetcher(args, output_dir)
     run_fund_holdings_fetcher(args, peer_path, output_dir)
     run_index_valuation_fetcher(args, output_dir)
+    run_research_report_fetcher(args, peer_path, output_dir)
     log_step("patching source manifest and writing auto prepare manifest")
     patch_source_manifest(output_dir, args, source)
     write_auto_prepare_manifest(output_dir / "auto_prepare_manifest.json", args, source, selection)

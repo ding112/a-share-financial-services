@@ -97,6 +97,7 @@ AkShare 股票、指数、宏观、基金、债券和期货接口，只记录数
 | `fetch_a_share_northbound_margin.py` | `northbound_flow.csv`, `northbound_holdings.csv`, `margin_trading.csv` | 北向资金、融资融券 |
 | `fetch_a_share_board_sector.py` | `board_sector_context.csv` | 概念板块和行业板块实时行情 |
 | `fetch_a_share_fund_holdings.py` | `fund_heavy_stocks.csv`, `etf_list.csv` | 基金重仓股、ETF 行情 |
+| `fetch_a_share_research_reports.py` | `research_reports.csv`, `research_reports/` | 股票池对应的东方财富个股研报索引和稳定材料目录 |
 
 抓取器输出的 `source_manifest.json` 必须保留来源类型、来源名称、访问时间、
 报告期或口径、验证状态和缺失行为。下游技能不得把公开行情或公开财务摘要
@@ -106,6 +107,20 @@ AkShare 股票、指数、宏观、基金、债券和期货接口，只记录数
 抓取器才使用 AkShare `stock_financial_abstract`；此时 AkShare 依赖缺失、
 接口失败或字段无法解析必须让命令返回非 0，并在 `fetch_errors.csv` 中保留
 失败原因。
+
+`scripts/fetch_a_share_research_reports.py` 是独立研报索引抓取入口。它只按
+`peer_universe.csv` 中的证券代码检索东方财富个股研报，不请求行业研报，也
+不从主题名称推断东方财富行业代码。默认截至 `as-of` 回溯 730 天，每个证券
+最多保留 20 条；按发布日期降序、稳定报告 ID 升序排序并去重。东方财富请求
+使用明确 User-Agent、30 秒超时、串行节流和最多 3 次有限重试。
+
+研报索引和预留材料目录统一标记为 `third_party`、`待验证`。本阶段不下载
+PDF，`local_pdf_path` 固定写 `来源缺失`。检索成功但无记录时在
+`fetch_errors.csv` 写 `research_report_index_no_data`；请求或解析失败时写
+`research_report_index`。部分证券失败仍返回成功，全部证券请求失败时独立
+入口写完空索引、来源清单和错误记录后返回非零。端点和字段映射参考
+Apache-2.0 项目 `a-stock-data` 与 AkShare 公开实现，本项目使用标准库按自身
+契约重新实现，不把外部项目作为运行时依赖。
 
 ## 自动 research-pack 准备
 
@@ -146,6 +161,8 @@ data-prep worker 使用的一键准备入口。它负责在 `research-pack/` 缺
 | `company_details.csv` | 主营构成、公司概况和股本结构。 |
 | `annual_reports.csv` | 最近 2 个年报年度的公告标题、公告日期、巨潮链接、PDF 链接和本地 PDF 路径。 |
 | `annual_reports/` | 年报 PDF 原文目录，用于后续抽取主营业务、订单、产能、客户和技术路线证据。 |
+| `research_reports.csv` | 股票池对应的东方财富个股研报索引；默认回溯 730 天，每证券最多 20 条。 |
+| `research_reports/` | 研报材料稳定目录；当前索引切片只创建目录，不下载 PDF。 |
 | `northbound_flow.csv` | 北向资金净流入趋势。 |
 | `northbound_holdings.csv` | 北向持股数量和比例。 |
 | `margin_trading.csv` | 融资融券余额和买入额。 |
@@ -157,7 +174,7 @@ data-prep worker 使用的一键准备入口。它负责在 `research-pack/` 缺
 | `market_pe_pb.csv` | A 股整体 PE/PB。 |
 | `index_spot.csv` | 主要指数实时行情。 |
 | `source_manifest.json` | 声明每个文件的来源类型、来源名称、时间、口径、验证状态和缺失行为。 |
-| `fetch_errors.csv` | 记录部分行情或财务抓取失败；字段失败时下游必须写 `来源缺失`。 |
+| `fetch_errors.csv` | 记录行情、财务和研报索引的无数据或抓取失败；字段失败时下游必须写 `来源缺失`。 |
 | `auto_prepare_manifest.json` | 记录主题、输入、输出、候选数量、筛选规则和是否少于 8 只。 |
 
 默认筛选规则是按成交额降序、再按总市值降序、再按来源顺序，过滤名称包含
@@ -182,6 +199,7 @@ ST、`*ST` 或退市风险的公司，最多保留 15 只。少于 8 只时可�
 | 营收、净利润、扣非净利润、EPS、BPS、经营现金流/股 | AkShare `stock_financial_abstract` 最新一期摘要、东方财富数据中心、巨潮资讯定期报告 | 用户提供财务表 | 写 `来源缺失`，不要用行业均值替代 |
 | 营收增速、净利增速、毛利率、净利率、ROE、资产负债率 | AkShare `stock_financial_abstract` 最新一期摘要、东方财富数据中心、巨潮资讯定期报告 | 用户提供财务表 | 写 `来源缺失`，不要用行业均值替代 |
 | 利润表、资产负债表、现金流量表明细 | 东方财富数据中心、巨潮资讯定期报告 | 用户提供三表导出 | 写 `来源缺失`，不要用摘要字段倒推三表 |
+| 个股研报索引、评级和原始盈利预测 | 东方财富 `reportapi` | 用户提供研报索引 | 固定标记 `third_party`、`待验证`，不得写入财务摘要、业务暴露、估值排序或 idea shortlist |
 | 总股本、流通股本 | 腾讯行情 API 的市值和价格计算；交易所或公告股本数据 | 用户提供股本表 | 若由市值和价格计算，口径写 `计算值: 市值 / 最新价` |
 | EV、EV/Revenue、EV/EBITDA | 用户提供模型导出、公开行情与财务数据计算 | 用户提供数据库导出 | 缺少现金、债务或 EBITDA 时写 `来源缺失` |
 | 主营业务和主题暴露 | 年报、半年报、投资者关系记录、交易所互动和公告 | 第三方研究或用户摘录 | 进入 `待验证`，不得进入核心证据 |
@@ -232,6 +250,8 @@ ST、`*ST` 或退市风险的公司，最多保留 15 只。少于 8 只时可�
 | `macro_context.csv` | 可选 | GDP、CPI、PPI、PMI 宏观指标 | 用于行业背景，不得外推到单家公司 |
 | `company_details.csv` | 可选 | 主营构成、公司概况、股本结构 | 巨潮来源可作 `official_disclosure`，需报告期标注 |
 | `annual_reports.csv` | 可选 | 最近 2 个年报年度的法定披露索引和本地 PDF 路径 | 缺失时公司业务暴露、订单、产能、客户和技术路线保持 `待验证` |
+| `research_reports.csv` | 可选 | 股票池对应的第三方个股研报索引、评级和原始盈利预测字段 | 只作后续核查线索，不进入财务摘要、业务暴露、估值排序或 idea shortlist |
+| `research_reports/` | 可选 | 研报 PDF 材料目录的稳定形状 | 当前索引阶段为空目录，不能据此升级验证状态 |
 | `northbound_flow.csv` | 可选 | 北向资金净流入趋势 | 只说明外资流向，不作为基本面证据 |
 | `northbound_holdings.csv` | 可选 | 北向持股数量和比例 | 只用于市场语境，不说明基本面优劣 |
 | `margin_trading.csv` | 可选 | 融资融券余额和买入额 | 用作交易风险参考 |
@@ -361,6 +381,37 @@ ST、`*ST` 或退市风险的公司，最多保留 15 只。少于 8 只时可�
 | `source_name` | 固定为 `巨潮资讯` |
 | `verification_status` | 固定为 `verified`，仅表示公告来源已定位 |
 | `basis` | 年度报告原文 PDF |
+
+### `research_reports.csv`
+
+`research_reports.csv` 是可选的第三方研报索引。它只用于发现后续需要核查的
+材料，不得把评级、盈利预测或观点写入 `financial_summary.csv`，也不得单独
+证明业务暴露、订单、客户、经营质量或驱动 idea shortlist。即使来源失败，
+文件也必须保留稳定表头，`research_reports/` 目录必须存在。
+
+固定列：
+
+| 字段 | 含义 |
+|---|---|
+| `report_id` | 东方财富稳定研报 ID，也是去重身份 |
+| `scope_type` | 当前固定为 `stock`；Issue 01 不请求行业研报 |
+| `security_code` | 与 `peer_universe.csv` 匹配的标准 A 股证券代码 |
+| `security_name` | 证券简称 |
+| `industry_code` | 源记录中的个股行业代码，缺失时留空 |
+| `industry_name` | 源记录中的个股行业名称，缺失时留空 |
+| `title` | 研报标题 |
+| `institution` | 发布机构简称 |
+| `publish_date` | 发布日期 |
+| `report_type` | 源记录中的报告类型 |
+| `rating` | 源记录中的评级 |
+| `profit_forecast_raw` | 按固定字段保留的原始盈利预测 JSON，不并入财务摘要 |
+| `detail_url` | 由源记录 `encodeUrl` 定位的东方财富详情链接；源字段缺失时写 `来源缺失` |
+| `pdf_url` | 东方财富原始 PDF 定位链接，本阶段不下载 |
+| `local_pdf_path` | 当前固定为 `来源缺失` |
+| `source_type` | 固定为 `third_party` |
+| `source_name` | 固定为 `东方财富研报` |
+| `verification_status` | 固定为 `待验证` |
+| `basis` | `as-of`、回溯天数、每证券上限和使用边界 |
 
 ### Markdown evidence files
 

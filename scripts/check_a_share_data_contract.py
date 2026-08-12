@@ -57,6 +57,8 @@ REQUIRED_RESEARCH_PACK_FILES = [
     "financial_summary.csv",
     "company_exposure.md",
     "events_and_risks.md",
+    "research_reports.csv",
+    "research_reports/",
 ]
 
 REQUIRED_RESEARCH_PACK_FIELDS = [
@@ -76,6 +78,10 @@ REQUIRED_RESEARCH_PACK_FIELDS = [
     "revenue",
     "net_profit",
     "roe",
+    "report_id",
+    "scope_type",
+    "profit_forecast_raw",
+    "local_pdf_path",
 ]
 
 

@@ -113,6 +113,8 @@ The recommended package contains these files:
 | `market_context_limit_up.csv` | No | Limit-up stock pool and reasons. |
 | `macro_context.csv` | No | GDP, CPI, PPI, PMI macro indicators. |
 | `company_details.csv` | No | Main business composition, company profile, share structure. |
+| `research_reports.csv` | No | 东方财富个股研报索引，固定标记为 `third_party`、`待验证`，不进入财务摘要、业务暴露、估值排序或 idea shortlist。 |
+| `research_reports/` | No | 研报材料稳定目录；当前索引阶段只创建目录，不下载 PDF。 |
 | `northbound_flow.csv` | No | Northbound capital net flow trend. |
 | `northbound_holdings.csv` | No | Northbound stock holdings. |
 | `margin_trading.csv` | No | Margin trading balance and buy amount. |
@@ -211,6 +213,8 @@ out/机器人产业链/research-pack/candidate_peer_universe.csv
 out/机器人产业链/research-pack/peer_universe.csv
 out/机器人产业链/research-pack/market_snapshot.csv
 out/机器人产业链/research-pack/financial_summary.csv
+out/机器人产业链/research-pack/research_reports.csv
+out/机器人产业链/research-pack/research_reports/
 out/机器人产业链/research-pack/source_manifest.json
 out/机器人产业链/research-pack/fetch_errors.csv
 out/机器人产业链/research-pack/auto_prepare_manifest.json
