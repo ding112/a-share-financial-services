@@ -23,6 +23,7 @@ MACRO_CONTEXT_FETCHER = ROOT / "scripts/fetch_a_share_macro_context.py"
 COMPANY_DETAILS_FETCHER = ROOT / "scripts/fetch_a_share_company_details.py"
 ANNUAL_REPORT_FETCHER = ROOT / "scripts/fetch_a_share_annual_reports.py"
 RESEARCH_REPORT_FETCHER = ROOT / "scripts/fetch_a_share_research_reports.py"
+MARKET_ACTIVITY_FETCHER = ROOT / "scripts/fetch_a_share_market_activity.py"
 NORTHBOUND_MARGIN_FETCHER = ROOT / "scripts/fetch_a_share_northbound_margin.py"
 BOARD_SECTOR_FETCHER = ROOT / "scripts/fetch_a_share_board_sector.py"
 FUND_HOLDINGS_FETCHER = ROOT / "scripts/fetch_a_share_fund_holdings.py"
@@ -63,6 +64,8 @@ AUTO_OUTPUTS = [
     "annual_reports/",
     "research_reports.csv",
     "research_reports/",
+    "block_trades.csv",
+    "shareholder_counts.csv",
     "northbound_flow.csv",
     "northbound_holdings.csv",
     "margin_trading.csv",
@@ -190,6 +193,62 @@ def parse_args() -> argparse.Namespace:
         default="success",
         help="Offline research report scenario used with the fixture source.",
     )
+    parser.add_argument(
+        "--block-trade-lookback-days",
+        type=int,
+        default=365,
+        help="Block trade lookback window ending at --as-of. Defaults to 365 days.",
+    )
+    parser.add_argument(
+        "--block-trade-limit-per-security",
+        type=int,
+        default=50,
+        help="Maximum block trade rows per security. Defaults to 50.",
+    )
+    parser.add_argument(
+        "--shareholder-lookback-days",
+        type=int,
+        default=730,
+        help="Shareholder snapshot lookback by statistical end date. Defaults to 730 days.",
+    )
+    parser.add_argument(
+        "--shareholder-limit-per-security",
+        type=int,
+        default=8,
+        help="Maximum visible shareholder snapshots per security. Defaults to 8.",
+    )
+    parser.add_argument(
+        "--market-activity-source",
+        choices=["eastmoney", "fixture"],
+        help="Market activity source. Defaults to fixture for fixture universes, otherwise Eastmoney.",
+    )
+    parser.add_argument(
+        "--market-activity-fixture-scenario",
+        choices=[
+            "success",
+            "no-data",
+            "partial-failure",
+            "all-failure",
+            "invalid-row",
+            "derived-conflict",
+            "as-of-pagination",
+            "duplicate-block-trades",
+            "block-trade-all-failure",
+            "shareholder-all-failure",
+            "malformed-response",
+            "all-invalid-records",
+            "filtered-plus-invalid",
+            "insufficient-derived",
+            "early-stop-before-failure",
+        ],
+        default="success",
+        help="Offline market activity scenario used with the fixture source.",
+    )
+    parser.add_argument(
+        "--skip-market-activity",
+        action="store_true",
+        help="Skip the complete market activity fact stage.",
+    )
     return parser.parse_args()
 
 
@@ -278,7 +337,18 @@ def write_csv(path: Path, rows: list[dict[str, Any]], fieldnames: list[str]) -> 
 
 
 def complete_research_pack(output_dir: Path) -> bool:
+    skipped_outputs: set[str] = set()
+    auto_manifest = output_dir / "auto_prepare_manifest.json"
+    if auto_manifest.is_file():
+        try:
+            inputs = json.loads(auto_manifest.read_text(encoding="utf-8")).get("inputs", {})
+            if inputs.get("skip_market_activity") is True:
+                skipped_outputs.update({"block_trades.csv", "shareholder_counts.csv"})
+        except (json.JSONDecodeError, OSError):
+            pass
     for filename in AUTO_OUTPUTS:
+        if filename in skipped_outputs:
+            continue
         path = output_dir / filename
         if filename.endswith("/"):
             if not path.is_dir():
@@ -550,6 +620,13 @@ def write_auto_prepare_manifest(
             "research_report_limit": args.research_report_limit,
             "research_report_pdf_limit": args.research_report_pdf_limit,
             "skip_research_report_pdf_download": args.skip_research_report_pdf_download,
+            "market_activity_source": resolved_market_activity_source(args),
+            "market_activity_fixture_scenario": args.market_activity_fixture_scenario,
+            "block_trade_lookback_days": args.block_trade_lookback_days,
+            "block_trade_limit_per_security": args.block_trade_limit_per_security,
+            "shareholder_lookback_days": args.shareholder_lookback_days,
+            "shareholder_limit_per_security": args.shareholder_limit_per_security,
+            "skip_market_activity": args.skip_market_activity,
         },
         "outputs": {filename: filename for filename in AUTO_OUTPUTS},
         "selection": selection,
@@ -706,6 +783,79 @@ def run_research_report_fetcher(args: argparse.Namespace, peer_path: Path, outpu
     )
 
 
+def resolved_market_activity_source(args: argparse.Namespace) -> str:
+    return args.market_activity_source or (
+        "fixture" if args.universe_source == "fixture" else "eastmoney"
+    )
+
+
+def clear_market_activity_outputs(output_dir: Path) -> None:
+    for filename in ("block_trades.csv", "shareholder_counts.csv"):
+        (output_dir / filename).unlink(missing_ok=True)
+
+    manifest_path = output_dir / "source_manifest.json"
+    if manifest_path.is_file():
+        data = json.loads(manifest_path.read_text(encoding="utf-8"))
+        files = data.get("files", [])
+        data["files"] = [
+            item
+            for item in files
+            if item.get("file") not in {"block_trades.csv", "shareholder_counts.csv"}
+        ]
+        manifest_path.write_text(
+            json.dumps(data, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+    errors_path = output_dir / "fetch_errors.csv"
+    if errors_path.is_file():
+        rows = read_csv(errors_path)
+        retained = [
+            row
+            for row in rows
+            if row.get("stage") != "market_activity_input"
+            and not row.get("stage", "").startswith("block_trade")
+            and not row.get("stage", "").startswith("shareholder_count")
+        ]
+        write_csv(errors_path, retained, ["code", "source", "stage", "error"])
+
+
+def run_market_activity_fetcher(
+    args: argparse.Namespace,
+    peer_path: Path,
+    output_dir: Path,
+) -> None:
+    if args.skip_market_activity:
+        clear_market_activity_outputs(output_dir)
+        log_step("skipped optional fetcher: fetch_a_share_market_activity.py")
+        return
+    _run_optional_fetcher(
+        "fetch_a_share_market_activity.py",
+        [
+            sys.executable,
+            str(MARKET_ACTIVITY_FETCHER),
+            "--peer-universe",
+            str(peer_path),
+            "--output-dir",
+            str(output_dir),
+            "--as-of",
+            args.as_of,
+            "--block-trade-lookback-days",
+            str(args.block_trade_lookback_days),
+            "--block-trade-limit-per-security",
+            str(args.block_trade_limit_per_security),
+            "--shareholder-lookback-days",
+            str(args.shareholder_lookback_days),
+            "--shareholder-limit-per-security",
+            str(args.shareholder_limit_per_security),
+            "--source",
+            resolved_market_activity_source(args),
+            "--fixture-scenario",
+            args.market_activity_fixture_scenario,
+        ],
+    )
+
+
 def run_northbound_margin_fetcher(args: argparse.Namespace, output_dir: Path) -> None:
     _run_optional_fetcher(
         "fetch_a_share_northbound_margin.py",
@@ -790,6 +940,14 @@ def main() -> int:
         raise SystemExit("--research-report-limit must be positive")
     if args.research_report_pdf_limit < 1:
         raise SystemExit("--research-report-pdf-limit must be positive")
+    if args.block_trade_lookback_days < 1:
+        raise SystemExit("--block-trade-lookback-days must be positive")
+    if args.block_trade_limit_per_security < 1:
+        raise SystemExit("--block-trade-limit-per-security must be positive")
+    if args.shareholder_lookback_days < 1:
+        raise SystemExit("--shareholder-lookback-days must be positive")
+    if args.shareholder_limit_per_security < 1:
+        raise SystemExit("--shareholder-limit-per-security must be positive")
     output_dir = Path(args.output_dir) if args.output_dir else stage_dir(args.theme, "research-pack")
     output_dir = output_dir.resolve()
     log_step(f"starting auto research-pack: theme={args.theme} output_dir={output_dir}")
@@ -821,6 +979,7 @@ def main() -> int:
     run_fund_holdings_fetcher(args, peer_path, output_dir)
     run_index_valuation_fetcher(args, output_dir)
     run_research_report_fetcher(args, peer_path, output_dir)
+    run_market_activity_fetcher(args, peer_path, output_dir)
     log_step("patching source manifest and writing auto prepare manifest")
     patch_source_manifest(output_dir, args, source)
     write_auto_prepare_manifest(output_dir / "auto_prepare_manifest.json", args, source, selection)

@@ -58,6 +58,8 @@ description: 为 A 股研究字段映射免费或公开数据源，分类来源�
 | AkShare 公司详情 | 主营构成、公司概况、股本结构 | `official_disclosure` / `public_market_data` | 巨潮来源优先 |
 | AkShare 北向/融资融券 | 北向资金净流入、北向持股、融资融券余额 | `public_market_data` | 最新可用期 |
 | AkShare 基金持仓 | 基金重仓股、ETF 行情 | `public_market_data` | 最新报告期 |
+| 东方财富大宗交易 | 逐笔交易日、收盘价、成交价、成交量、成交额、折溢价、公开买卖方营业部 | `public_market_data` | 以研究截止日回溯；API 基础单位；不得推断资金意图或价格方向 |
+| 东方财富股东户数 | 个股历史统计截止日、公告日、当期与上期户数、变化、户均持股及市值、总市值、总股本 | `public_market_data` | 使用 `RPT_HOLDERNUM_DET`；统计截止日和公告日双重可见性；API 基础单位；不得推断筹码或价格方向 |
 
 ## AkShare 接口查询目录
 
@@ -171,6 +173,8 @@ data-prep worker 使用的一键准备入口。它负责在 `research-pack/` 缺
 | `annual_reports/` | 年报 PDF 原文目录，用于后续抽取主营业务、订单、产能、客户和技术路线证据。 |
 | `research_reports.csv` | 股票池对应的东方财富个股研报索引；默认回溯 730 天，每证券最多 20 条。 |
 | `research_reports/` | 限量研报 PDF 材料目录；默认每证券最新 3 份，可显式跳过下载。 |
+| `block_trades.csv` | 股票池对应的东方财富逐笔大宗交易事实；默认回溯 365 天，每证券最多 50 笔。 |
+| `shareholder_counts.csv` | 股票池对应的东方财富个股历史股东户数快照；默认按统计截止日回溯 730 天，每证券最多 8 个研究截止日前已公告快照。 |
 | `northbound_flow.csv` | 北向资金净流入趋势。 |
 | `northbound_holdings.csv` | 北向持股数量和比例。 |
 | `margin_trading.csv` | 融资融券余额和买入额。 |
@@ -182,12 +186,17 @@ data-prep worker 使用的一键准备入口。它负责在 `research-pack/` 缺
 | `market_pe_pb.csv` | A 股整体 PE/PB。 |
 | `index_spot.csv` | 主要指数实时行情。 |
 | `source_manifest.json` | 声明每个文件的来源类型、来源名称、时间、口径、验证状态和缺失行为。 |
-| `fetch_errors.csv` | 记录行情、财务、研报索引和 PDF 的无数据或抓取失败；字段失败时下游必须写 `来源缺失`。 |
-| `auto_prepare_manifest.json` | 记录主题、输入、输出、候选数量、筛选规则和是否少于 8 只。 |
+| `fetch_errors.csv` | 记录行情、财务、研报索引、PDF、大宗交易和股东户数的无数据或抓取失败；字段失败时下游必须写 `来源缺失`。 |
+| `auto_prepare_manifest.json` | 记录主题、输入、输出、候选数量、筛选规则、市场行为事实参数和是否少于 8 只。 |
 
 默认筛选规则是按成交额降序、再按总市值降序、再按来源顺序，过滤名称包含
 ST、`*ST` 或退市风险的公司，最多保留 15 只。少于 8 只时可以继续流程，
 但必须在输出中提示分析师复核股票池。
+
+市场行为事实阶段默认执行，可以用 `--skip-market-activity` 整体跳过；阶段同时
+输出大宗交易和股东户数事实。普通股票池默认使用东方财富，fixture 股票池默认使用离线
+fixture。来源完全失败时一键准备只告警并继续核心数据包，独立入口仍保留非零
+退出码和稳定空产物。
 
 ## 字段来源契约
 
@@ -260,6 +269,8 @@ ST、`*ST` 或退市风险的公司，最多保留 15 只。少于 8 只时可�
 | `annual_reports.csv` | 可选 | 最近 2 个年报年度的法定披露索引和本地 PDF 路径 | 缺失时公司业务暴露、订单、产能、客户和技术路线保持 `待验证` |
 | `research_reports.csv` | 可选 | 股票池对应的第三方个股研报索引、评级和原始盈利预测字段 | 只作后续核查线索，不进入财务摘要、业务暴露、估值排序或 idea shortlist |
 | `research_reports/` | 可选 | 限量研报 PDF 材料目录 | 下载成功只表示材料已定位，不能据此升级验证状态 |
+| `block_trades.csv` | 可选 | 股票池内逐笔大宗交易市场行为事实 | 缺失时不推断未发生交易；折溢价和营业部不得解释为吸筹、利益输送或价格方向 |
+| `shareholder_counts.csv` | 可选 | 股票池内个股历史股东户数快照 | 缺失时不推断股东户数未变化；不得解释为筹码集中、主力吸筹、买卖方向、股东结构评分或价格因果 |
 | `northbound_flow.csv` | 可选 | 北向资金净流入趋势 | 只说明外资流向，不作为基本面证据 |
 | `northbound_holdings.csv` | 可选 | 北向持股数量和比例 | 只用于市场语境，不说明基本面优劣 |
 | `margin_trading.csv` | 可选 | 融资融券余额和买入额 | 用作交易风险参考 |
@@ -420,6 +431,66 @@ ST、`*ST` 或退市风险的公司，最多保留 15 只。少于 8 只时可�
 | `source_name` | 固定为 `东方财富研报` |
 | `verification_status` | 固定为 `待验证` |
 | `basis` | `as-of`、回溯天数、每证券或显式行业上限和使用边界 |
+
+### `block_trades.csv`
+
+`block_trades.csv` 是可选的大宗交易市场行为事实表。它只记录研究截止日前
+已经发生的逐笔交易，不包含交易后的涨跌表现、买卖方向评分或营业部属性推断。
+即使来源无数据或失败，独立抓取入口也必须保留稳定表头；字段缺失表示未知，
+不得写成零或据此推断没有发生交易。
+
+固定列：
+
+| 字段 | 含义 |
+|---|---|
+| `block_trade_id` | 根据交易事实和确定性重复序号生成的稳定本地标识；不是来源官方编号 |
+| `security_code` | 与 `peer_universe.csv` 匹配的标准 A 股证券代码 |
+| `security_name` | 证券简称；来源缺失时写 `来源缺失` |
+| `trade_date` | 交易日期，不得晚于研究截止日 |
+| `close_price_cny` | 当日收盘价，人民币元；来源缺失时写 `来源缺失` |
+| `deal_price_cny` | 大宗交易成交价，人民币元 |
+| `deal_volume_shares` | 成交量，股；使用 API 基础单位，不按网页万股展示重复缩放 |
+| `deal_amount_cny` | 成交额，人民币元；使用 API 基础单位，不按网页万元展示重复缩放 |
+| `premium_discount_pct` | 相对收盘价的折溢价百分比；来源冲突或不可计算时写 `来源缺失` |
+| `premium_discount_pct_basis` | `source`、`calculated` 或 `来源缺失` |
+| `buyer_name` | 公开买方营业部名称；缺失时写 `来源缺失` |
+| `seller_name` | 公开卖方营业部名称；缺失时写 `来源缺失` |
+| `source_type` | 固定为 `public_market_data` |
+| `source_name` | 固定为 `东方财富大宗交易` |
+| `verification_status` | 固定为 `待验证` |
+| `basis` | `as-of`、回溯天数、每证券上限和市场行为事实边界 |
+
+### `shareholder_counts.csv`
+
+`shareholder_counts.csv` 是可选的股东户数历史快照表。当前抓取使用东方财富
+`RPT_HOLDERNUM_DET` 个股历史详情，按统计截止日回溯，并要求公告日存在且不晚于
+研究截止日。巨潮季度股东户数数据只作为后续官方交叉验证候选，不能以宽泛的
+“巨潮优先”替代当前历史快照语义。文件不包含区间股价涨跌或任何筹码、资金意图
+和价格因果结论。
+
+固定列：
+
+| 字段 | 含义 |
+|---|---|
+| `shareholder_snapshot_id` | 由证券代码、统计截止日和公告日生成的 `sh_` 稳定本地标识 |
+| `security_code` | 与股票池匹配的标准 A 股证券代码 |
+| `security_name` | 证券简称；缺失时写 `来源缺失` |
+| `statistical_end_date` | 统计截止日，位于回溯窗口且不晚于研究截止日 |
+| `announcement_date` | 公告日，必须存在且不晚于研究截止日 |
+| `holder_count` | 本次股东户数，户 |
+| `previous_holder_count` | 上次股东户数，户；缺失时写 `来源缺失` |
+| `holder_count_change` | 户数变化；来源冲突或不可计算时写 `来源缺失` |
+| `holder_count_change_basis` | `source`、`calculated` 或 `来源缺失` |
+| `holder_count_change_pct` | 户数变化率，百分比；来源冲突或不可计算时写 `来源缺失` |
+| `holder_count_change_pct_basis` | `source`、`calculated` 或 `来源缺失` |
+| `average_holding_shares` | 户均持股，股；映射 `AVG_HOLD_NUM`，不按网页单位重复缩放 |
+| `average_holding_market_value_cny` | 户均持股市值，人民币元，API 基础单位 |
+| `total_market_cap_cny` | 总市值，人民币元，API 基础单位 |
+| `total_shares` | 总股本，股，API 基础单位 |
+| `source_type` | 固定为 `public_market_data` |
+| `source_name` | 固定为 `东方财富股东户数` |
+| `verification_status` | 固定为 `待验证` |
+| `basis` | `as-of`、双日期可见性、回溯天数、每证券上限和禁止推断边界 |
 
 ### Markdown evidence files
 

@@ -40,6 +40,7 @@ from check_a_share_auto_prepare import validate_auto_prepare  # noqa: E402
 from check_a_share_auxiliary_fetchers import validate_auxiliary_fetchers  # noqa: E402
 from check_a_share_annual_report_fetcher import validate_annual_report_fetcher  # noqa: E402
 from check_a_share_research_report_fetcher import validate_research_report_fetcher  # noqa: E402
+from check_a_share_market_activity_fetcher import validate_market_activity_fetcher  # noqa: E402
 
 try:
     import yaml
@@ -403,6 +404,9 @@ for annual_report_fetcher_error in validate_annual_report_fetcher():
 
 for research_report_fetcher_error in validate_research_report_fetcher():
     err(research_report_fetcher_error)
+
+for market_activity_fetcher_error in validate_market_activity_fetcher():
+    err(market_activity_fetcher_error)
 
 for generator_error in validate_comps_generator():
     err(generator_error)

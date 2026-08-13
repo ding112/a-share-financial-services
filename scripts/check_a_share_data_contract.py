@@ -59,6 +59,8 @@ REQUIRED_RESEARCH_PACK_FILES = [
     "events_and_risks.md",
     "research_reports.csv",
     "research_reports/",
+    "block_trades.csv",
+    "shareholder_counts.csv",
 ]
 
 REQUIRED_RESEARCH_PACK_FIELDS = [
@@ -82,6 +84,17 @@ REQUIRED_RESEARCH_PACK_FIELDS = [
     "scope_type",
     "profit_forecast_raw",
     "local_pdf_path",
+    "block_trade_id",
+    "deal_volume_shares",
+    "premium_discount_pct_basis",
+    "shareholder_snapshot_id",
+    "statistical_end_date",
+    "announcement_date",
+    "holder_count",
+    "holder_count_change_basis",
+    "holder_count_change_pct_basis",
+    "average_holding_shares",
+    "total_shares",
 ]
 
 

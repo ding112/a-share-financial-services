@@ -130,7 +130,7 @@
 | 质押 | `stock_gpzy_pledge_ratio_em`, `stock_gpzy_pledge_ratio_detail_em`, `stock_gpzy_individual_pledge_ratio_detail_em`, `stock_cg_equity_mortgage_cninfo` | 识别股权质押比例和重要股东质押。 | 巨潮优先。 |
 | 担保和诉讼 | `stock_cg_guarantee_cninfo`, `stock_cg_lawsuit_cninfo` | 补充公司治理和潜在负债风险。 | `official_disclosure` |
 | 董监高及股东变动 | `stock_share_hold_change_sse`, `stock_share_hold_change_szse`, `stock_share_hold_change_bse`, `stock_ggcg_em`, `stock_shareholder_change_ths` | 识别减持、增持和管理层持股变化。 | 交易所优先。 |
-| 股东人数和集中度 | `stock_hold_num_cninfo`, `stock_hold_control_cninfo`, `stock_main_stock_holder`, `stock_circulate_stock_holder` | 判断筹码集中和股东结构变化。 | 巨潮优先。 |
+| 股东户数历史快照 | 东方财富 `RPT_HOLDERNUM_DET`（当前抓取）；`stock_hold_num_cninfo`（后续季度交叉验证候选） | 补统计截止日、公告日、户数变化、户均持股与总股本等可审计事实。 | 当前必须使用东方财富个股历史详情完整分页和双日期可见性，不得用全市场最新报表 `RPT_HOLDERNUMLATEST` 代替历史序列；户均持股映射 `AVG_HOLD_NUM`。巨潮季度数据仅作为后续官方交叉验证候选。不得据此判断筹码集中、吸筹或价格方向。 |
 | 商誉 | `stock_sy_profile_em`, `stock_sy_yq_em`, `stock_sy_jz_em`, `stock_sy_em`, `stock_sy_hy_em` | 检查商誉规模和减值风险。 | `public_market_data` |
 
 ## 资金流、交易行为和市场热度
@@ -143,6 +143,7 @@
 | 个股资金流 | `stock_fund_flow_individual`, `stock_individual_fund_flow`, `stock_individual_fund_flow_rank` | 观察个股短期资金净流入和排名。 | 只用于市场语境。 |
 | 行业和概念资金流 | `stock_fund_flow_industry`, `stock_fund_flow_concept`, `stock_sector_fund_flow_rank`, `stock_sector_fund_flow_summary`, `stock_sector_fund_flow_hist`, `stock_concept_fund_flow_hist` | 判断题材扩散和资金集中度。 | 不证明主题暴露。 |
 | 主力和大单 | `stock_main_fund_flow`, `stock_fund_flow_big_deal` | 观察主力净流入和大单交易。 | 只能作为交易线索。 |
+| 大宗交易逐笔事实 | `stock_dzjy_mrmx` / 东方财富 `RPT_DATA_BLOCKTRADE` | 补成交价、成交量、成交额、折溢价和公开买卖方营业部。 | AkShare 当前实现固定首个 5000 行且不翻页，长窗口可能截断；当前接入按股票池直接完整分页。不得推断吸筹、利益输送或价格方向。 |
 | 北向资金和持股 | `stock_hsgt_fund_flow_summary_em`, `stock_hsgt_hist_em`, `stock_hsgt_hold_stock_em`, `stock_hsgt_individual_em`, `stock_hsgt_individual_detail_em`, `stock_hsgt_board_rank_em` | 补外资流向、持股和板块排行。 | 北向不是基本面证据。 |
 | 融资融券 | `stock_margin_sse`, `stock_margin_detail_sse`, `stock_margin_szse`, `stock_margin_detail_szse`, `stock_margin_account_info`, `stock_margin_ratio_pa` | 补杠杆交易、融资买入和融券卖出。 | 用作交易风险。 |
 | 龙虎榜 | `stock_lhb_detail_em`, `stock_lhb_stock_statistic_em`, `stock_lhb_jgmmtj_em`, `stock_lhb_jgstatistic_em`, `stock_lhb_detail_daily_sina` | 识别营业部和机构席位交易。 | 不用于基本面判断。 |
