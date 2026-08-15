@@ -49,7 +49,7 @@ Run `python3 scripts/check.py` before committing — it lints every manifest, ve
 
 ### Issue tracker
 
-本仓库使用 `.scratch/` 下的本地 Markdown 跟踪 PRD 和 issues，不处理外部 PR。详见 `docs/agents/issue-tracker.md`。
+本仓库使用 `.scratch/` 下的本地 Markdown 跟踪 specs 和 issues。详见 `docs/agents/issue-tracker.md`。
 
 ### Triage labels
 

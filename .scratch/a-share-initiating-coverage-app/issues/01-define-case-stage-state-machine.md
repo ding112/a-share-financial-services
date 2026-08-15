@@ -1,7 +1,7 @@
 # 定义首次覆盖项目与五阶段状态机
 
 Type: grilling
-Status: open
+Status: claimed (2026-08-14, by dsh agent — wayfinder 01 首轮)
 Blocked by: none
 
 ## Question
