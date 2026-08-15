@@ -65,6 +65,7 @@ AkShare 公开概念或行业板块生成 `candidate_peer_universe.csv` 和
 | `fetch_a_share_northbound_margin.py` | `northbound_flow.csv`, `northbound_holdings.csv`, `margin_trading.csv` | 北向资金、融资融券 |
 | `fetch_a_share_board_sector.py` | `board_sector_context.csv` | 概念板块和行业板块实时行情 |
 | `fetch_a_share_fund_holdings.py` | `fund_heavy_stocks.csv`, `etf_list.csv` | 基金重仓股、ETF 行情 |
+| `fetch_a_share_investor_interactions.py` | `investor_interactions.csv` | 深市互动易与沪市上证e互动中截至研究截止日的已回复问答 |
 
 默认财务源仍是 Eastmoney。显式使用 `--financial-source akshare` 时，
 AkShare 依赖缺失、接口失败或字段无法解析会让准备命令返回非 0；调用方
@@ -115,6 +116,7 @@ The recommended package contains these files:
 | `company_details.csv` | No | Main business composition, company profile, share structure. |
 | `research_reports.csv` | No | 东方财富个股及显式行业研报共用索引，固定标记为 `third_party`、`待验证`，不进入财务摘要、业务暴露、行业规模、估值排序或 idea shortlist。 |
 | `research_reports/` | No | 共用的限量研报 PDF 材料目录；默认每证券或显式行业最新 3 份，固定标记为 `third_party`、`待验证`。 |
+| `investor_interactions.csv` | No | 深交所互动易与上证e互动已回复问答，固定标记为 `company_public_material`、`待验证`；问题断言不构成事实，公司回复需公告核验。 |
 | `northbound_flow.csv` | No | Northbound capital net flow trend. |
 | `northbound_holdings.csv` | No | Northbound stock holdings. |
 | `margin_trading.csv` | No | Margin trading balance and buy amount. |
@@ -221,6 +223,12 @@ python -m pip install -r requirements.txt
 `local_pdf_path` 为 `来源缺失`，具体原因在 `fetch_errors.csv` 的
 `research_report_pdf` 阶段排查。
 
+一键入口还会按股票池交易所读取互动平台：深市使用深交所互动易，沪市使用
+上证e互动。默认按回答时间回溯 365 天、每证券最多 50 条已回复问答，可用
+`--skip-investor-interactions` 整体跳过。`investor_interactions.csv` 中的问题
+断言不得作为事实；公司回复固定为 `company_public_material`、`待验证`，并需
+回到公告或定期报告交叉验证。
+
 命令写出：
 
 ```text
@@ -230,6 +238,7 @@ out/机器人产业链/research-pack/market_snapshot.csv
 out/机器人产业链/research-pack/financial_summary.csv
 out/机器人产业链/research-pack/research_reports.csv
 out/机器人产业链/research-pack/research_reports/
+out/机器人产业链/research-pack/investor_interactions.csv
 out/机器人产业链/research-pack/source_manifest.json
 out/机器人产业链/research-pack/fetch_errors.csv
 out/机器人产业链/research-pack/auto_prepare_manifest.json

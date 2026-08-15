@@ -24,6 +24,7 @@ COMPANY_DETAILS_FETCHER = ROOT / "scripts/fetch_a_share_company_details.py"
 ANNUAL_REPORT_FETCHER = ROOT / "scripts/fetch_a_share_annual_reports.py"
 RESEARCH_REPORT_FETCHER = ROOT / "scripts/fetch_a_share_research_reports.py"
 MARKET_ACTIVITY_FETCHER = ROOT / "scripts/fetch_a_share_market_activity.py"
+INVESTOR_INTERACTION_FETCHER = ROOT / "scripts/fetch_a_share_investor_interactions.py"
 NORTHBOUND_MARGIN_FETCHER = ROOT / "scripts/fetch_a_share_northbound_margin.py"
 BOARD_SECTOR_FETCHER = ROOT / "scripts/fetch_a_share_board_sector.py"
 FUND_HOLDINGS_FETCHER = ROOT / "scripts/fetch_a_share_fund_holdings.py"
@@ -66,6 +67,7 @@ AUTO_OUTPUTS = [
     "research_reports/",
     "block_trades.csv",
     "shareholder_counts.csv",
+    "investor_interactions.csv",
     "northbound_flow.csv",
     "northbound_holdings.csv",
     "margin_trading.csv",
@@ -249,6 +251,46 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Skip the complete market activity fact stage.",
     )
+    parser.add_argument(
+        "--investor-interaction-lookback-days",
+        type=int,
+        default=365,
+        help="Investor interaction answer-time lookback ending at --as-of. Defaults to 365 days.",
+    )
+    parser.add_argument(
+        "--investor-interaction-limit-per-security",
+        type=int,
+        default=50,
+        help="Maximum answered investor interactions per security. Defaults to 50.",
+    )
+    parser.add_argument(
+        "--investor-interaction-source",
+        choices=["exchange", "fixture"],
+        help="Investor interaction source. Defaults to fixture for fixture universes, otherwise exchanges.",
+    )
+    parser.add_argument(
+        "--investor-interaction-fixture-scenario",
+        choices=[
+            "success",
+            "no-data",
+            "future-only",
+            "duplicate",
+            "partial-failure",
+            "all-failure",
+            "malformed-cninfo-detail",
+            "malformed-sse-html",
+            "malformed-sse-uid",
+            "tie-limit",
+            "cninfo-page-duplicate",
+        ],
+        default="success",
+        help="Offline investor interaction scenario used with the fixture source.",
+    )
+    parser.add_argument(
+        "--skip-investor-interactions",
+        action="store_true",
+        help="Skip the optional exchange investor interaction stage.",
+    )
     return parser.parse_args()
 
 
@@ -344,6 +386,8 @@ def complete_research_pack(output_dir: Path) -> bool:
             inputs = json.loads(auto_manifest.read_text(encoding="utf-8")).get("inputs", {})
             if inputs.get("skip_market_activity") is True:
                 skipped_outputs.update({"block_trades.csv", "shareholder_counts.csv"})
+            if inputs.get("skip_investor_interactions") is True:
+                skipped_outputs.add("investor_interactions.csv")
         except (json.JSONDecodeError, OSError):
             pass
     for filename in AUTO_OUTPUTS:
@@ -627,6 +671,11 @@ def write_auto_prepare_manifest(
             "shareholder_lookback_days": args.shareholder_lookback_days,
             "shareholder_limit_per_security": args.shareholder_limit_per_security,
             "skip_market_activity": args.skip_market_activity,
+            "investor_interaction_source": resolved_investor_interaction_source(args),
+            "investor_interaction_fixture_scenario": args.investor_interaction_fixture_scenario,
+            "investor_interaction_lookback_days": args.investor_interaction_lookback_days,
+            "investor_interaction_limit_per_security": args.investor_interaction_limit_per_security,
+            "skip_investor_interactions": args.skip_investor_interactions,
         },
         "outputs": {filename: filename for filename in AUTO_OUTPUTS},
         "selection": selection,
@@ -856,6 +905,71 @@ def run_market_activity_fetcher(
     )
 
 
+def resolved_investor_interaction_source(args: argparse.Namespace) -> str:
+    return args.investor_interaction_source or (
+        "fixture" if args.universe_source == "fixture" else "exchange"
+    )
+
+
+def clear_investor_interaction_outputs(output_dir: Path) -> None:
+    (output_dir / "investor_interactions.csv").unlink(missing_ok=True)
+
+    manifest_path = output_dir / "source_manifest.json"
+    if manifest_path.is_file():
+        data = json.loads(manifest_path.read_text(encoding="utf-8"))
+        files = data.get("files", [])
+        data["files"] = [
+            item
+            for item in files
+            if item.get("file") != "investor_interactions.csv"
+        ]
+        manifest_path.write_text(
+            json.dumps(data, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+    errors_path = output_dir / "fetch_errors.csv"
+    if errors_path.is_file():
+        retained = [
+            row
+            for row in read_csv(errors_path)
+            if not row.get("stage", "").startswith("investor_interaction")
+        ]
+        write_csv(errors_path, retained, ["code", "source", "stage", "error"])
+
+
+def run_investor_interaction_fetcher(
+    args: argparse.Namespace,
+    peer_path: Path,
+    output_dir: Path,
+) -> None:
+    if args.skip_investor_interactions:
+        clear_investor_interaction_outputs(output_dir)
+        log_step("skipped optional fetcher: fetch_a_share_investor_interactions.py")
+        return
+    _run_optional_fetcher(
+        "fetch_a_share_investor_interactions.py",
+        [
+            sys.executable,
+            str(INVESTOR_INTERACTION_FETCHER),
+            "--peer-universe",
+            str(peer_path),
+            "--output-dir",
+            str(output_dir),
+            "--as-of",
+            args.as_of,
+            "--lookback-days",
+            str(args.investor_interaction_lookback_days),
+            "--limit-per-security",
+            str(args.investor_interaction_limit_per_security),
+            "--source",
+            resolved_investor_interaction_source(args),
+            "--fixture-scenario",
+            args.investor_interaction_fixture_scenario,
+        ],
+    )
+
+
 def run_northbound_margin_fetcher(args: argparse.Namespace, output_dir: Path) -> None:
     _run_optional_fetcher(
         "fetch_a_share_northbound_margin.py",
@@ -948,6 +1062,10 @@ def main() -> int:
         raise SystemExit("--shareholder-lookback-days must be positive")
     if args.shareholder_limit_per_security < 1:
         raise SystemExit("--shareholder-limit-per-security must be positive")
+    if args.investor_interaction_lookback_days < 1:
+        raise SystemExit("--investor-interaction-lookback-days must be positive")
+    if args.investor_interaction_limit_per_security < 1:
+        raise SystemExit("--investor-interaction-limit-per-security must be positive")
     output_dir = Path(args.output_dir) if args.output_dir else stage_dir(args.theme, "research-pack")
     output_dir = output_dir.resolve()
     log_step(f"starting auto research-pack: theme={args.theme} output_dir={output_dir}")
@@ -980,6 +1098,7 @@ def main() -> int:
     run_index_valuation_fetcher(args, output_dir)
     run_research_report_fetcher(args, peer_path, output_dir)
     run_market_activity_fetcher(args, peer_path, output_dir)
+    run_investor_interaction_fetcher(args, peer_path, output_dir)
     log_step("patching source manifest and writing auto prepare manifest")
     patch_source_manifest(output_dir, args, source)
     write_auto_prepare_manifest(output_dir / "auto_prepare_manifest.json", args, source, selection)

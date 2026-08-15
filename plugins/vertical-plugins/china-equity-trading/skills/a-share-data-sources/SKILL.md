@@ -60,6 +60,7 @@ description: 为 A 股研究字段映射免费或公开数据源，分类来源�
 | AkShare 基金持仓 | 基金重仓股、ETF 行情 | `public_market_data` | 最新报告期 |
 | 东方财富大宗交易 | 逐笔交易日、收盘价、成交价、成交量、成交额、折溢价、公开买卖方营业部 | `public_market_data` | 以研究截止日回溯；API 基础单位；不得推断资金意图或价格方向 |
 | 东方财富股东户数 | 个股历史统计截止日、公告日、当期与上期户数、变化、户均持股及市值、总市值、总股本 | `public_market_data` | 使用 `RPT_HOLDERNUM_DET`；统计截止日和公告日双重可见性；API 基础单位；不得推断筹码或价格方向 |
+| 深交所互动易、上证e互动 | 股票池内研究截止日前已回复的投资者问答 | `company_public_material` | 问题中的断言不构成事实；只有公司回复属于公司公开材料；公司回复需与公告或定期报告交叉验证 |
 
 ## AkShare 接口查询目录
 
@@ -100,6 +101,7 @@ AkShare 股票、指数、宏观、基金、债券和期货接口，只记录数
 | `fetch_a_share_board_sector.py` | `board_sector_context.csv` | 概念板块和行业板块实时行情 |
 | `fetch_a_share_fund_holdings.py` | `fund_heavy_stocks.csv`, `etf_list.csv` | 基金重仓股、ETF 行情 |
 | `fetch_a_share_research_reports.py` | `research_reports.csv`, `research_reports/` | 股票池个股及显式东方财富行业代码对应的研报索引和限量 PDF 材料 |
+| `fetch_a_share_investor_interactions.py` | `investor_interactions.csv` | 深市互动易与沪市上证e互动中研究截止日前已回复的问答 |
 
 抓取器输出的 `source_manifest.json` 必须保留来源类型、来源名称、访问时间、
 报告期或口径、验证状态和缺失行为。下游技能不得把公开行情或公开财务摘要
@@ -131,6 +133,21 @@ AkShare 股票、指数、宏观、基金、债券和期货接口，只记录数
 返回非零。端点和字段映射参考
 Apache-2.0 项目 `a-stock-data` 与 AkShare 公开实现，本项目使用标准库按自身
 契约重新实现，不把外部项目作为运行时依赖。
+
+`scripts/fetch_a_share_investor_interactions.py` 是独立互动平台问答抓取入口。
+它按 `peer_universe.csv` 路由：深市 A 股读取深交所互动易，沪市 A 股读取
+上证e互动，北交所当前记录 `investor_interaction_unsupported`。默认按回答时间
+截至 `as-of` 回溯 365 天，每证券最多保留 50 条已回复问答；问题时间和回答时间
+都不得晚于研究截止日。记录按证券代码、回答时间降序和来源记录 ID 稳定排序，
+并生成本地 `iq_` 稳定标识。
+
+问答固定标记为 `company_public_material`、`待验证`。问题由投资者提出，问题中
+的断言不构成事实；只有公司回复属于公司公开材料，公司回复需与公告或定期报告
+交叉验证，不得单独升级为主营业务、订单、客户、产能、经营质量或投资价值证据。
+成功但无已回复问答时写 `investor_interaction_no_data`；请求、响应或解析失败时写
+`investor_interaction`。单个证券失败时保留其他证券结果；全部受支持证券失败时，
+独立入口写完稳定空表、来源清单和错误记录后返回非零。一键准备把该阶段视为可选
+补充数据源，失败只告警并继续核心数据包。
 
 ## 自动 research-pack 准备
 
@@ -175,6 +192,7 @@ data-prep worker 使用的一键准备入口。它负责在 `research-pack/` 缺
 | `research_reports/` | 限量研报 PDF 材料目录；默认每证券最新 3 份，可显式跳过下载。 |
 | `block_trades.csv` | 股票池对应的东方财富逐笔大宗交易事实；默认回溯 365 天，每证券最多 50 笔。 |
 | `shareholder_counts.csv` | 股票池对应的东方财富个股历史股东户数快照；默认按统计截止日回溯 730 天，每证券最多 8 个研究截止日前已公告快照。 |
+| `investor_interactions.csv` | 股票池对应的深交所互动易与上证e互动已回复问答；默认按回答时间回溯 365 天，每证券最多 50 条。 |
 | `northbound_flow.csv` | 北向资金净流入趋势。 |
 | `northbound_holdings.csv` | 北向持股数量和比例。 |
 | `margin_trading.csv` | 融资融券余额和买入额。 |
@@ -186,7 +204,7 @@ data-prep worker 使用的一键准备入口。它负责在 `research-pack/` 缺
 | `market_pe_pb.csv` | A 股整体 PE/PB。 |
 | `index_spot.csv` | 主要指数实时行情。 |
 | `source_manifest.json` | 声明每个文件的来源类型、来源名称、时间、口径、验证状态和缺失行为。 |
-| `fetch_errors.csv` | 记录行情、财务、研报索引、PDF、大宗交易和股东户数的无数据或抓取失败；字段失败时下游必须写 `来源缺失`。 |
+| `fetch_errors.csv` | 记录行情、财务、研报索引、PDF、大宗交易、股东户数和互动问答的无数据或抓取失败；字段失败时下游必须写 `来源缺失`。 |
 | `auto_prepare_manifest.json` | 记录主题、输入、输出、候选数量、筛选规则、市场行为事实参数和是否少于 8 只。 |
 
 默认筛选规则是按成交额降序、再按总市值降序、再按来源顺序，过滤名称包含
@@ -197,6 +215,11 @@ ST、`*ST` 或退市风险的公司，最多保留 15 只。少于 8 只时可�
 输出大宗交易和股东户数事实。普通股票池默认使用东方财富，fixture 股票池默认使用离线
 fixture。来源完全失败时一键准备只告警并继续核心数据包，独立入口仍保留非零
 退出码和稳定空产物。
+
+互动平台问答阶段同样默认执行，可以用 `--skip-investor-interactions` 跳过。
+普通股票池按交易所读取深交所互动易或上证e互动，fixture 股票池默认使用离线
+fixture；来源完全失败时只告警并继续核心数据包。跳过阶段时必须同时移除旧的
+`investor_interactions.csv`、来源清单条目和对应错误记录。
 
 ## 字段来源契约
 
@@ -217,6 +240,7 @@ fixture。来源完全失败时一键准备只告警并继续核心数据包，�
 | 营收增速、净利增速、毛利率、净利率、ROE、资产负债率 | AkShare `stock_financial_abstract` 最新一期摘要、东方财富数据中心、巨潮资讯定期报告 | 用户提供财务表 | 写 `来源缺失`，不要用行业均值替代 |
 | 利润表、资产负债表、现金流量表明细 | 东方财富数据中心、巨潮资讯定期报告 | 用户提供三表导出 | 写 `来源缺失`，不要用摘要字段倒推三表 |
 | 个股研报索引、评级和原始盈利预测 | 东方财富 `reportapi` | 用户提供研报索引 | 固定标记 `third_party`、`待验证`，不得写入财务摘要、业务暴露、估值排序或 idea shortlist |
+| 投资者互动问答 | 深交所互动易、上证e互动 | 公司公告、定期报告或用户提供问答摘录 | 固定标记 `company_public_material`、`待验证`；问题断言不构成事实，公司回复需公告核验 |
 | 总股本、流通股本 | 腾讯行情 API 的市值和价格计算；交易所或公告股本数据 | 用户提供股本表 | 若由市值和价格计算，口径写 `计算值: 市值 / 最新价` |
 | EV、EV/Revenue、EV/EBITDA | 用户提供模型导出、公开行情与财务数据计算 | 用户提供数据库导出 | 缺少现金、债务或 EBITDA 时写 `来源缺失` |
 | 主营业务和主题暴露 | 年报、半年报、投资者关系记录、交易所互动和公告 | 第三方研究或用户摘录 | 进入 `待验证`，不得进入核心证据 |
@@ -271,6 +295,7 @@ fixture。来源完全失败时一键准备只告警并继续核心数据包，�
 | `research_reports/` | 可选 | 限量研报 PDF 材料目录 | 下载成功只表示材料已定位，不能据此升级验证状态 |
 | `block_trades.csv` | 可选 | 股票池内逐笔大宗交易市场行为事实 | 缺失时不推断未发生交易；折溢价和营业部不得解释为吸筹、利益输送或价格方向 |
 | `shareholder_counts.csv` | 可选 | 股票池内个股历史股东户数快照 | 缺失时不推断股东户数未变化；不得解释为筹码集中、主力吸筹、买卖方向、股东结构评分或价格因果 |
+| `investor_interactions.csv` | 可选 | 股票池内深交所互动易与上证e互动已回复问答 | 缺失时不推断公司未回复；问题断言不得作为事实，公司回复保持 `待验证` 并回到公告或定期报告核验 |
 | `northbound_flow.csv` | 可选 | 北向资金净流入趋势 | 只说明外资流向，不作为基本面证据 |
 | `northbound_holdings.csv` | 可选 | 北向持股数量和比例 | 只用于市场语境，不说明基本面优劣 |
 | `margin_trading.csv` | 可选 | 融资融券余额和买入额 | 用作交易风险参考 |
@@ -491,6 +516,35 @@ fixture。来源完全失败时一键准备只告警并继续核心数据包，�
 | `source_name` | 固定为 `东方财富股东户数` |
 | `verification_status` | 固定为 `待验证` |
 | `basis` | `as-of`、双日期可见性、回溯天数、每证券上限和禁止推断边界 |
+
+### `investor_interactions.csv`
+
+`investor_interactions.csv` 是可选的交易所互动平台已回复问答表。深市 A 股来自
+深交所互动易，沪市 A 股来自上证e互动；北交所当前不支持。文件只纳入问题时间
+和回答时间都不晚于研究截止日、且回答时间位于回溯窗口内的完整问答。问题是
+投资者输入，问题中的断言不构成事实；只有公司回复属于公司公开材料，公司回复
+需与公告或定期报告交叉验证。
+
+固定列：
+
+| 字段 | 含义 |
+|---|---|
+| `interaction_id` | 由证券代码、平台和来源记录 ID 生成的 `iq_` 稳定本地标识 |
+| `security_code` | 与股票池匹配的标准沪深 A 股证券代码 |
+| `security_name` | 证券简称；来源缺失时写 `来源缺失` |
+| `platform` | `深交所互动易` 或 `上证e互动` |
+| `source_record_id` | 平台公开响应中的问题或 feed 记录 ID |
+| `question` | 投资者问题原文；其中的断言不得作为已验证事实 |
+| `answer` | 上市公司回复原文 |
+| `question_time` | 问题公开时间，不得晚于研究截止日 |
+| `answer_time` | 公司回答公开时间，位于回溯窗口且不得晚于研究截止日 |
+| `question_source` | 平台公开的提问客户端来源，例如 APP、网站或 Android |
+| `answerer` | 平台公开的公司回答者名称；缺失时写公司简称或 `来源缺失` |
+| `source_url` | 可定位该问题或公司 feed 记录的公开页面链接 |
+| `source_type` | 固定为 `company_public_material` |
+| `source_name` | `深交所互动易` 或 `上证e互动` |
+| `verification_status` | 固定为 `待验证` |
+| `basis` | `as-of`、回溯天数、每证券上限、问题与回复各自证据边界及公告核验要求 |
 
 ### Markdown evidence files
 

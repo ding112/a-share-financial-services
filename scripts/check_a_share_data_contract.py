@@ -61,6 +61,7 @@ REQUIRED_RESEARCH_PACK_FILES = [
     "research_reports/",
     "block_trades.csv",
     "shareholder_counts.csv",
+    "investor_interactions.csv",
 ]
 
 REQUIRED_RESEARCH_PACK_FIELDS = [
@@ -95,6 +96,21 @@ REQUIRED_RESEARCH_PACK_FIELDS = [
     "holder_count_change_pct_basis",
     "average_holding_shares",
     "total_shares",
+    "interaction_id",
+    "platform",
+    "source_record_id",
+    "question_time",
+    "answer_time",
+    "question_source",
+    "answerer",
+    "source_url",
+]
+
+REQUIRED_INTERACTION_BOUNDARIES = [
+    "问题中的断言不构成事实",
+    "公司回复需与公告或定期报告交叉验证",
+    "深交所互动易",
+    "上证e互动",
 ]
 
 
@@ -131,6 +147,10 @@ def validate_contract() -> list[str]:
     for field in REQUIRED_RESEARCH_PACK_FIELDS:
         if field not in text:
             errors.append(f"{SOURCE.relative_to(ROOT)} missing research-pack field `{field}`")
+
+    for phrase in REQUIRED_INTERACTION_BOUNDARIES:
+        if phrase not in text:
+            errors.append(f"{SOURCE.relative_to(ROOT)} missing interaction boundary `{phrase}`")
 
     if SOURCE.is_file() and BUNDLED.is_file() and _read(SOURCE) != _read(BUNDLED):
         errors.append(

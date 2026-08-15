@@ -103,7 +103,7 @@ a-share-market-researcher:a-share-market-researcher(
   使用 ./research-pack/机器人产业链/ 作为输入数据包。
   先解析 source_manifest.json 和 peer_universe.csv；如果存在
   market_snapshot.csv、financial_summary.csv、company_exposure.md 或
-  events_and_risks.md，也一并读取。请先列出数据包字段来源、数据时间、
+  events_and_risks.md、investor_interactions.csv，也一并读取。请先列出数据包字段来源、数据时间、
   报告期或口径、验证状态和缺失行为，再生成结果到
   ./out/机器人产业链行业研究.md
 )
@@ -197,6 +197,39 @@ python3 scripts/fetch_a_share_public_data.py \
   --market-source fixture \
   --financial-source fixture
 ```
+
+## 抓取交易所互动平台问答
+
+已有 `peer_universe.csv` 时，可以把深市“互动易”和沪市“上证e互动”的已回复
+问答加入同一个 research-pack。默认按回答时间截至 `as-of` 回溯 365 天，每证券
+最多保留 50 条；北交所当前会在 `fetch_errors.csv` 中标记为不支持。
+
+```bash
+python3 scripts/fetch_a_share_investor_interactions.py \
+  --peer-universe fixtures/a-share-research-packs/robotics-reducer/peer_universe.csv \
+  --output-dir out/机器人产业链/research-pack \
+  --as-of 2026-08-13
+```
+
+命令写出或更新：
+
+- `investor_interactions.csv`
+- `source_manifest.json`
+- `fetch_errors.csv`
+
+离线检查使用固定 fixture，不访问交易所：
+
+```bash
+python3 scripts/fetch_a_share_investor_interactions.py \
+  --peer-universe fixtures/a-share-research-packs/robotics-reducer/peer_universe.csv \
+  --output-dir out/机器人产业链/research-pack \
+  --as-of 2026-08-13 \
+  --source fixture
+```
+
+问答统一标记为 `company_public_material`、`待验证`。问题中的断言不构成事实；
+公司回复也不能替代法定信息披露，必须回到公告或定期报告交叉验证。一键准备默认
+运行该阶段，可用 `--skip-investor-interactions` 整体跳过。
 
 ## 本地公开数据预处理
 

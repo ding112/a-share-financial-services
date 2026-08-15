@@ -41,6 +41,9 @@ from check_a_share_auxiliary_fetchers import validate_auxiliary_fetchers  # noqa
 from check_a_share_annual_report_fetcher import validate_annual_report_fetcher  # noqa: E402
 from check_a_share_research_report_fetcher import validate_research_report_fetcher  # noqa: E402
 from check_a_share_market_activity_fetcher import validate_market_activity_fetcher  # noqa: E402
+from check_a_share_investor_interaction_fetcher import (  # noqa: E402
+    validate_investor_interaction_fetcher,
+)
 
 try:
     import yaml
@@ -407,6 +410,9 @@ for research_report_fetcher_error in validate_research_report_fetcher():
 
 for market_activity_fetcher_error in validate_market_activity_fetcher():
     err(market_activity_fetcher_error)
+
+for investor_interaction_error in validate_investor_interaction_fetcher():
+    err(investor_interaction_error)
 
 for generator_error in validate_comps_generator():
     err(generator_error)
