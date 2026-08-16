@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""为 A 股 research-pack 抓取资产负债表和利润表明细。
+"""为 A 股 research-pack 抓取资产负债表、利润表和现金流量表明细。
 
 保留来源的非空行项目，并只为口径明确的核心项目提供规范名称；不把当前
 来源未声明的报表范围猜测为合并或母公司口径。
@@ -142,11 +142,16 @@ VALUE_SEMANTICS = {
     "cash_flow_statement": "year_to_date",
 }
 STATEMENT_TYPES = ("balance_sheet", "income_statement", "cash_flow_statement")
+ERROR_STAGE_PREFIXES = {
+    "balance_sheet": "financial_statement_balance_sheet",
+    "income_statement": "financial_statement_income_statement",
+    "cash_flow_statement": "financial_statement_cash_flow",
+}
 REGULAR_REPORT_TYPES = frozenset({"一季报", "中报", "三季报", "年报"})
 
 # 当前 AkShare 资产负债表接口公开的金额字段目录。目录是刻意显式维护的：
 # 不能因为未知字段的名称或数值看起来像金额就自行猜测其单位。
-KNOWN_AMOUNT_FIELDS = frozenset(
+KNOWN_BALANCE_SHEET_FIELDS = frozenset(
     """
     ACCEPT_DEPOSIT_INTERBANK ACCOUNTS_PAYABLE ACCOUNTS_RECE ACCRUED_EXPENSE
     ADVANCE_RECEIVABLES AGENT_TRADE_SECURITY AGENT_UNDERWRITE_SECURITY
@@ -267,7 +272,7 @@ KNOWN_CASH_FLOW_STATEMENT_FIELDS = frozenset(
 )
 PER_SHARE_FIELDS = frozenset({"BASIC_EPS", "DILUTED_EPS"})
 KNOWN_FIELDS = {
-    "balance_sheet": KNOWN_AMOUNT_FIELDS,
+    "balance_sheet": KNOWN_BALANCE_SHEET_FIELDS,
     "income_statement": KNOWN_INCOME_STATEMENT_FIELDS,
     "cash_flow_statement": KNOWN_CASH_FLOW_STATEMENT_FIELDS,
 }
@@ -854,7 +859,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
                 )
                 peer_records[statement_type] = records_by_period(records, as_of)
             except Exception as exc:
-                errors.append(error_row(peer["code"], f"financial_statement_{statement_type}", str(exc)))
+                errors.append(error_row(peer["code"], ERROR_STAGE_PREFIXES[statement_type], str(exc)))
 
         window = shared_period_window(peer_records, period_limit)
         for statement_type in STATEMENT_TYPES:
@@ -866,7 +871,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
                 errors.append(
                     error_row(
                         peer["code"],
-                        f"financial_statement_{statement_type}_no_data",
+                        f"{ERROR_STAGE_PREFIXES[statement_type]}_no_data",
                         f"截至 {as_of.isoformat()} 未返回可用{label}",
                     )
                 )
@@ -876,7 +881,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
                 errors.append(
                     error_row(
                         peer["code"],
-                        f"financial_statement_{statement_type}_no_data",
+                        f"{ERROR_STAGE_PREFIXES[statement_type]}_no_data",
                         f"共享报告期窗口内缺少{label}: {', '.join(missing_periods)}",
                     )
                 )

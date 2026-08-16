@@ -129,25 +129,32 @@ def read_rows(path: Path) -> list[dict[str, str]]:
         return list(csv.DictReader(handle))
 
 
-def run_fetcher(root: Path, peers: Path, *extra: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
+def run_fetcher(
+    root: Path, peers: Path, *extra: str, period_limit: str | None = "2"
+) -> subprocess.CompletedProcess[str]:
+    command = [
+        sys.executable,
+        str(FETCHER),
+        "--peer-universe",
+        str(peers),
+        "--output-dir",
+        str(root / "output"),
+        "--as-of",
+        "2026-08-16",
+    ]
+    if period_limit is not None:
+        command.extend(["--period-limit", period_limit])
+    command.extend(
         [
-            sys.executable,
-            str(FETCHER),
-            "--peer-universe",
-            str(peers),
-            "--output-dir",
-            str(root / "output"),
-            "--as-of",
-            "2026-08-16",
-            "--period-limit",
-            "2",
             "--source",
             "fixture",
             "--fixture-scenario",
             "success",
             *extra,
-        ],
+        ]
+    )
+    return subprocess.run(
+        command,
         cwd=ROOT,
         check=False,
         capture_output=True,
@@ -403,7 +410,7 @@ def validate_shared_period_window(errors: list[str]) -> None:
         root = Path(tmp)
         peers = root / "peers.csv"
         write_peers(peers)
-        result = run_fetcher(root, peers, "--period-limit", "12")
+        result = run_fetcher(root, peers, period_limit=None)
         if result.returncode != 0:
             errors.append(f"默认共享窗口场景退出码为 {result.returncode}: {result.stderr}")
             return
@@ -435,7 +442,7 @@ def validate_shared_period_window(errors: list[str]) -> None:
         if not {"一季报", "中报", "三季报", "年报"}.issubset({row["report_type"] for row in rows}):
             errors.append("一季报、中报、三季报和年报都必须能够进入共享报告期窗口")
 
-        configured = run_fetcher(root, peers, "--period-limit", "3")
+        configured = run_fetcher(root, peers, period_limit="3")
         if configured.returncode != 0:
             errors.append(f"可配置共享窗口场景退出码为 {configured.returncode}: {configured.stderr}")
             return
@@ -447,7 +454,7 @@ def validate_shared_period_window(errors: list[str]) -> None:
         root = Path(tmp)
         peers = root / "peers.csv"
         write_peers(peers)
-        result = run_fetcher(root, peers, "--period-limit", "2", "--fixture-scenario", "window-gap")
+        result = run_fetcher(root, peers, "--fixture-scenario", "window-gap", period_limit="2")
         if result.returncode != 0:
             errors.append(f"共享窗口缺期场景退出码为 {result.returncode}: {result.stderr}")
             return
@@ -596,6 +603,22 @@ def validate_income_statement_degradations(errors: list[str]) -> None:
             errors.append("无法解析的已知利润表项目必须记录 financial_statement_schema")
 
 
+def validate_cash_flow_no_data(errors: list[str]) -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        peers = root / "peers.csv"
+        write_peers(peers)
+        result = run_fetcher(root, peers, "--fixture-scenario", "no-data")
+        if result.returncode != 0:
+            errors.append(f"现金流量表无数据场景退出码为 {result.returncode}: {result.stderr}")
+            return
+        stages = {row.get("stage") for row in read_rows(root / "output" / "fetch_errors.csv")}
+        if "financial_statement_cash_flow_no_data" not in stages:
+            errors.append("现金流量表无数据必须记录固定的 financial_statement_cash_flow_no_data")
+        if "financial_statement_cash_flow_statement_no_data" in stages:
+            errors.append("现金流量表无数据不得使用 statement_type 拼接的错误阶段")
+
+
 def validate_bj_unsupported(errors: list[str]) -> None:
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
@@ -619,6 +642,7 @@ def main() -> int:
     validate_input_errors(errors)
     validate_unknown_field(errors)
     validate_income_statement_degradations(errors)
+    validate_cash_flow_no_data(errors)
     validate_bj_unsupported(errors)
     if errors:
         print(f"FAIL — {len(errors)} A 股财务报表明细问题:", file=sys.stderr)
