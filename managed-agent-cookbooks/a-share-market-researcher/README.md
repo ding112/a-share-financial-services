@@ -63,6 +63,13 @@ AkShare 公开概念或行业板块生成 `candidate_peer_universe.csv` 和
 `financial_statement*` 错误。阶段失败只警告并保留固定表头、来源条目和错误记录，
 不改变核心研究包完成条件。
 
+财务报表明细第一版支持沪深 A 股；北交所证券不请求三表接口，并在错误文件中记录
+`financial_statement_unsupported`。所有记录都按研究截止日检查 `NOTICE_DATE` 和
+`UPDATE_DATE`：公告日晚于 `as-of` 的版本不可见，截止日后更新且无法恢复历史版本
+时记录 `financial_statement_historical_version_unavailable`，不得把当前值回填历史
+研究包。日期或必要字段结构异常记录 `financial_statement_schema`，与真实无数据
+保持区分。
+
 辅助抓取器自动生成以下文件：
 
 | 脚本 | 输出文件 | 数据范围 |
