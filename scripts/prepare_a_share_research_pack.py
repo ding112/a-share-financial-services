@@ -17,6 +17,31 @@ OPTIONAL_INPUTS = [
     "akshare_financial_summary.csv",
     "company_exposure.md",
     "events_and_risks.md",
+    "financial_statements.csv",
+]
+FINANCIAL_STATEMENTS_COLUMNS = [
+    "statement_item_id",
+    "security_code",
+    "security_name",
+    "organization_type",
+    "statement_type",
+    "period",
+    "report_type",
+    "notice_date",
+    "update_date",
+    "currency",
+    "statement_scope",
+    "source_line_item",
+    "normalized_line_item",
+    "value",
+    "unit",
+    "value_semantics",
+    "domestic_audit_opinion",
+    "overseas_audit_opinion",
+    "source_type",
+    "source_name",
+    "verification_status",
+    "basis",
 ]
 
 
@@ -89,12 +114,21 @@ def copy_optional_inputs(input_dir: Path, output_dir: Path) -> list[str]:
         "akshare_financial_summary.csv": "financial_summary.csv",
         "company_exposure.md": "company_exposure.md",
         "events_and_risks.md": "events_and_risks.md",
+        "financial_statements.csv": "financial_statements.csv",
     }
     for source_name, target_name in mapping.items():
         src = input_dir / source_name
         if src.is_file():
+            if source_name == "financial_statements.csv":
+                with src.open(newline="", encoding="utf-8") as handle:
+                    header = next(csv.reader(handle), [])
+                if header != FINANCIAL_STATEMENTS_COLUMNS:
+                    raise ValueError(
+                        "financial_statements.csv 表头不符合标准长表契约；"
+                        "不支持旧别名、宽表或隐式转换"
+                    )
             target = output_dir / target_name
-            if target.is_file():
+            if target.is_file() and source_name != "financial_statements.csv":
                 continue
             shutil.copyfile(src, target)
             copied.append(target_name)

@@ -10,6 +10,13 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts/prepare_a_share_research_pack.py"
+FINANCIAL_STATEMENTS_COLUMNS = [
+    "statement_item_id", "security_code", "security_name", "organization_type",
+    "statement_type", "period", "report_type", "notice_date", "update_date",
+    "currency", "statement_scope", "source_line_item", "normalized_line_item",
+    "value", "unit", "value_semantics", "domestic_audit_opinion",
+    "overseas_audit_opinion", "source_type", "source_name", "verification_status", "basis",
+]
 
 REQUIRED_TOKENS = [
     "def parse_args",
@@ -29,6 +36,8 @@ REQUIRED_TOKENS = [
     "events_and_risks.md",
     '"market_snapshot.csv": "market_snapshot.csv"',
     '"financial_summary.csv": "financial_summary.csv"',
+    '"financial_statements.csv": "financial_statements.csv"',
+    "FINANCIAL_STATEMENTS_COLUMNS",
 ]
 
 
@@ -68,6 +77,9 @@ def validate_prep_script() -> list[str]:
         (input_dir / "tencent_quotes.csv").write_text("code,basis\n300750.SZ,legacy\n", encoding="utf-8")
         (input_dir / "financial_summary.csv").write_text("code,basis\n300750.SZ,canonical\n", encoding="utf-8")
         (input_dir / "akshare_financial_summary.csv").write_text("code,basis\n300750.SZ,legacy\n", encoding="utf-8")
+        financial_header = ",".join(FINANCIAL_STATEMENTS_COLUMNS)
+        financial_content = financial_header + "\nitem-1,300750.SZ,宁德时代,一般企业,balance_sheet,2025-12-31,年报,2026-03-01,2026-03-02,CNY,来源缺失,MONETARYFUNDS,monetary_funds,1,元,point_in_time,来源缺失,来源缺失,public_market_data,AkShare,verified,fixture\n"
+        (input_dir / "financial_statements.csv").write_text(financial_content, encoding="utf-8")
         smoke = subprocess.run(
             [
                 sys.executable,
@@ -98,6 +110,25 @@ def validate_prep_script() -> list[str]:
             errors.append("prepare script smoke output missing financial_summary.csv")
         elif financial_output.read_text(encoding="utf-8").find("canonical") == -1:
             errors.append("prepare script did not prefer canonical financial_summary.csv")
+        statements_output = output_dir / "financial_statements.csv"
+        if not statements_output.is_file() or statements_output.read_text(encoding="utf-8") != financial_content:
+            errors.append("prepare script did not copy standard financial_statements.csv byte-for-byte")
+
+        bad_input = Path(tmp) / "bad-input"
+        bad_output = Path(tmp) / "bad-output"
+        bad_input.mkdir()
+        (bad_input / "peer_universe.csv").write_text(
+            (input_dir / "peer_universe.csv").read_text(encoding="utf-8"), encoding="utf-8"
+        )
+        (bad_input / "financial_statements.csv").write_text("wide,table\n1,2\n", encoding="utf-8")
+        rejected = subprocess.run(
+            [
+                sys.executable, str(SCRIPT), "--input-dir", str(bad_input),
+                "--output-dir", str(bad_output), "--theme", "测试主题", "--as-of", "2026-05-21",
+            ], cwd=ROOT, check=False, capture_output=True, text=True,
+        )
+        if rejected.returncode == 0 or "financial_statements.csv" not in rejected.stderr:
+            errors.append("prepare script should reject non-standard financial_statements.csv headers")
 
     return errors
 

@@ -46,6 +46,13 @@ REQUIRED_TOKENS = [
     "--research-report-pdf-limit",
     "--skip-research-report-pdf-download",
     "--research-report-industry-code",
+    "--financial-statement-source",
+    "--financial-statement-period-limit",
+    "--financial-statement-fixture-scenario",
+    "--skip-financial-statements",
+    "financial_statements.csv",
+    "run_financial_statement_fetcher",
+    "clear_financial_statement_outputs",
     "candidate_peer_universe.csv",
     "peer_universe.csv",
     "market_snapshot.csv",
@@ -104,6 +111,10 @@ def validate_auto_prepare() -> list[str]:
         "--research-report-pdf-limit",
         "--skip-research-report-pdf-download",
         "--research-report-industry-code",
+        "--financial-statement-source",
+        "--financial-statement-period-limit",
+        "--financial-statement-fixture-scenario",
+        "--skip-financial-statements",
     ]:
         if token not in help_result.stdout:
             errors.append(f"{SCRIPT.relative_to(ROOT)} --help missing {token}")
@@ -173,6 +184,7 @@ def validate_auto_prepare() -> list[str]:
             "peer_universe.csv",
             "market_snapshot.csv",
             "financial_summary.csv",
+            "financial_statements.csv",
             "research_reports.csv",
             "source_manifest.json",
             "fetch_errors.csv",
@@ -202,6 +214,68 @@ def validate_auto_prepare() -> list[str]:
             for key in ["theme", "as_of", "inputs", "outputs", "selection"]:
                 if key not in manifest:
                     errors.append(f"auto_prepare_manifest.json missing key `{key}`")
+            inputs = manifest.get("inputs", {})
+            if inputs.get("financial_statement_source") != "fixture":
+                errors.append("fixture universe should resolve financial statement source to fixture")
+            if inputs.get("financial_statement_period_limit") != 12:
+                errors.append("financial statement period limit should default to 12")
+            if inputs.get("financial_statement_fixture_scenario") != "success":
+                errors.append("auto manifest should record financial statement fixture scenario")
+            stage = manifest.get("financial_statements", {})
+            if stage.get("status") != "completed" or stage.get("exit_code") != 0:
+                errors.append("auto manifest should record successful financial statement stage")
+
+        statements_path = output_dir / "financial_statements.csv"
+        if statements_path.is_file():
+            with statements_path.open(newline="", encoding="utf-8") as handle:
+                statement_rows = list(csv.DictReader(handle))
+            if not statement_rows:
+                errors.append("financial_statements.csv should contain fixture rows")
+
+        failure = subprocess.run(
+            [
+                sys.executable, str(SCRIPT), "--theme", "机器人产业链", "--output-dir", str(output_dir),
+                "--as-of", "2026-05-22", "--universe-source", "fixture", "--market-source", "fixture",
+                "--financial-source", "fixture", "--financial-statement-fixture-scenario", "all-failed",
+                "--force",
+            ], cwd=ROOT, check=False, capture_output=True, text=True,
+        )
+        if failure.returncode != 0:
+            errors.append("financial statement optional failure should not fail auto prepare")
+        if "fetch_a_share_financial_statements.py" not in failure.stderr or "exited 1" not in failure.stderr:
+            errors.append("financial statement failure should warn with script and exit code")
+        if not statements_path.is_file():
+            errors.append("financial statement failure should retain fixed-header CSV")
+        failure_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        failure_stage = failure_manifest.get("financial_statements", {})
+        if failure_stage.get("status") != "failed" or failure_stage.get("exit_code") != 1:
+            errors.append("auto manifest should record failed financial statement stage")
+        failure_errors = read_csv_rows(output_dir / "fetch_errors.csv")
+        if not any(row.get("stage", "").startswith("financial_statement") for row in failure_errors):
+            errors.append("financial statement failure should retain stage errors")
+
+        skipped = subprocess.run(
+            [
+                sys.executable, str(SCRIPT), "--theme", "机器人产业链", "--output-dir", str(output_dir),
+                "--as-of", "2026-05-22", "--universe-source", "fixture", "--market-source", "fixture",
+                "--financial-source", "fixture", "--financial-statement-period-limit", "2",
+                "--skip-financial-statements", "--force",
+            ], cwd=ROOT, check=False, capture_output=True, text=True,
+        )
+        if skipped.returncode != 0:
+            errors.append("forced financial statement skip should keep auto prepare successful")
+        if statements_path.exists():
+            errors.append("forced financial statement skip should remove stale CSV")
+        skipped_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if skipped_manifest.get("financial_statements", {}).get("status") != "skipped":
+            errors.append("auto manifest should record skipped financial statement stage")
+        if any(item.get("file") == "financial_statements.csv" for item in skipped_manifest.get("files", [])):
+            errors.append("forced skip should remove financial statement manifest entry")
+        skipped_errors = read_csv_rows(output_dir / "fetch_errors.csv")
+        if any(row.get("stage", "").startswith("financial_statement") for row in skipped_errors):
+            errors.append("forced skip should remove financial statement errors")
+        if not (output_dir / "financial_summary.csv").is_file():
+            errors.append("forced financial statement skip should preserve core financial summary")
 
         second = subprocess.run(
             [

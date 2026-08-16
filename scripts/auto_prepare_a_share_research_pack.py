@@ -29,6 +29,7 @@ NORTHBOUND_MARGIN_FETCHER = ROOT / "scripts/fetch_a_share_northbound_margin.py"
 BOARD_SECTOR_FETCHER = ROOT / "scripts/fetch_a_share_board_sector.py"
 FUND_HOLDINGS_FETCHER = ROOT / "scripts/fetch_a_share_fund_holdings.py"
 INDEX_VALUATION_FETCHER = ROOT / "scripts/fetch_a_share_index_valuation.py"
+FINANCIAL_STATEMENT_FETCHER = ROOT / "scripts/fetch_a_share_financial_statements.py"
 
 PEER_COLUMNS = [
     "code",
@@ -54,6 +55,7 @@ AUTO_OUTPUTS = [
     "peer_universe.csv",
     "market_snapshot.csv",
     "financial_summary.csv",
+    "financial_statements.csv",
     "events_and_risks.md",
     "market_context_fund_flow.csv",
     "market_context_board_changes.csv",
@@ -138,6 +140,46 @@ def parse_args() -> argparse.Namespace:
         choices=["eastmoney", "akshare", "fixture"],
         default="eastmoney",
         help="Financial data source passed to fetch_a_share_public_data.py.",
+    )
+    parser.add_argument(
+        "--financial-statement-source",
+        choices=["akshare", "fixture"],
+        help="财务报表明细来源；默认随股票池来源解析，显式参数优先。",
+    )
+    parser.add_argument(
+        "--financial-statement-period-limit",
+        type=int,
+        default=12,
+        help="财务报表明细共享报告期数量，默认 12，必须为正整数。",
+    )
+    parser.add_argument(
+        "--financial-statement-fixture-scenario",
+        choices=[
+            "success",
+            "no-data",
+            "unknown-field",
+            "non-annual",
+            "invalid-income-value",
+            "window-gap",
+            "future-announcement",
+            "updated-after-asof",
+            "invalid-dates",
+            "duplicate-candidates",
+            "duplicate-candidates-reversed",
+            "statement-failure",
+            "all-failed",
+            "update-before-notice",
+            "future-report-period",
+            "invalid-period-date",
+            "invalid-report-type",
+        ],
+        default="success",
+        help="财务报表明细 fixture 场景。",
+    )
+    parser.add_argument(
+        "--skip-financial-statements",
+        action="store_true",
+        help="跳过可选财务报表明细阶段；与 --force 一起使用时清理旧产物。",
     )
     parser.add_argument(
         "--max-peers",
@@ -388,6 +430,8 @@ def complete_research_pack(output_dir: Path) -> bool:
                 skipped_outputs.update({"block_trades.csv", "shareholder_counts.csv"})
             if inputs.get("skip_investor_interactions") is True:
                 skipped_outputs.add("investor_interactions.csv")
+            if inputs.get("skip_financial_statements") is True:
+                skipped_outputs.add("financial_statements.csv")
         except (json.JSONDecodeError, OSError):
             pass
     for filename in AUTO_OUTPUTS:
@@ -650,6 +694,7 @@ def write_auto_prepare_manifest(
     args: argparse.Namespace,
     source: str,
     selection: dict[str, Any],
+    financial_statement_result: dict[str, Any],
 ) -> None:
     payload = {
         "theme": args.theme,
@@ -659,6 +704,10 @@ def write_auto_prepare_manifest(
             "universe_source": source,
             "market_source": args.market_source,
             "financial_source": args.financial_source,
+            "financial_statement_source": resolved_financial_statement_source(args),
+            "financial_statement_period_limit": args.financial_statement_period_limit,
+            "financial_statement_fixture_scenario": args.financial_statement_fixture_scenario,
+            "skip_financial_statements": args.skip_financial_statements,
             "research_report_source": resolved_research_report_source(args),
             "research_report_lookback_days": args.research_report_lookback_days,
             "research_report_limit": args.research_report_limit,
@@ -679,6 +728,7 @@ def write_auto_prepare_manifest(
         },
         "outputs": {filename: filename for filename in AUTO_OUTPUTS},
         "selection": selection,
+        "financial_statements": financial_statement_result,
         "notes": [
             "自动股票池来自公开概念/板块成分或用户提供股票池。",
             "概念/板块成分只作线索，业务暴露必须标记为待验证。",
@@ -752,6 +802,87 @@ def _run_optional_fetcher(name: str, command: list[str]) -> None:
         print(f"warning: {name} exited {result.returncode}: {result.stderr.strip()}", file=sys.stderr)
         return
     log_step(f"finished optional fetcher: {name}")
+
+
+def resolved_financial_statement_source(args: argparse.Namespace) -> str:
+    return args.financial_statement_source or (
+        "fixture" if args.universe_source == "fixture" else "akshare"
+    )
+
+
+def clear_financial_statement_outputs(output_dir: Path) -> None:
+    (output_dir / "financial_statements.csv").unlink(missing_ok=True)
+
+    manifest_path = output_dir / "source_manifest.json"
+    if manifest_path.is_file():
+        data = json.loads(manifest_path.read_text(encoding="utf-8"))
+        data["files"] = [
+            item for item in data.get("files", [])
+            if item.get("file") != "financial_statements.csv"
+        ]
+        manifest_path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+    errors_path = output_dir / "fetch_errors.csv"
+    if errors_path.is_file():
+        retained = [
+            row for row in read_csv(errors_path)
+            if not row.get("stage", "").startswith("financial_statement")
+        ]
+        write_csv(errors_path, retained, ["code", "source", "stage", "error"])
+
+
+def run_financial_statement_fetcher(
+    args: argparse.Namespace,
+    peer_path: Path,
+    output_dir: Path,
+) -> dict[str, Any]:
+    source = resolved_financial_statement_source(args)
+    result: dict[str, Any] = {
+        "status": "skipped" if args.skip_financial_statements else "failed",
+        "source": source,
+        "period_limit": args.financial_statement_period_limit,
+        "fixture_scenario": args.financial_statement_fixture_scenario,
+        "exit_code": None,
+    }
+    if args.skip_financial_statements:
+        clear_financial_statement_outputs(output_dir)
+        log_step("skipped optional fetcher: fetch_a_share_financial_statements.py")
+        return result
+
+    log_step("running optional fetcher: fetch_a_share_financial_statements.py")
+    command = [
+        sys.executable,
+        str(FINANCIAL_STATEMENT_FETCHER),
+        "--peer-universe",
+        str(peer_path),
+        "--output-dir",
+        str(output_dir),
+        "--as-of",
+        args.as_of,
+        "--period-limit",
+        str(args.financial_statement_period_limit),
+        "--source",
+        source,
+        "--fixture-scenario",
+        args.financial_statement_fixture_scenario,
+    ]
+    completed = subprocess.run(command, cwd=ROOT, check=False, capture_output=True, text=True)
+    result["exit_code"] = completed.returncode
+    if completed.returncode != 0:
+        result["status"] = "failed"
+        detail = completed.stderr.strip()
+        suffix = f": {detail}" if detail else ""
+        print(
+            "warning: financial statement stage "
+            f"(fetch_a_share_financial_statements.py) exited {completed.returncode}{suffix}",
+            file=sys.stderr,
+        )
+        return result
+    result["status"] = "completed"
+    if completed.stderr.strip():
+        print(completed.stderr.strip(), file=sys.stderr)
+    log_step("finished optional fetcher: fetch_a_share_financial_statements.py")
+    return result
 
 
 def run_market_context_fetcher(args: argparse.Namespace, output_dir: Path) -> None:
@@ -1006,6 +1137,7 @@ def patch_source_manifest(
     manifest_path = output_dir / "source_manifest.json"
     data = json.loads(manifest_path.read_text(encoding="utf-8"))
     files = data.get("files", [])
+    files[:] = [item for item in files if item.get("file") != "candidate_peer_universe.csv"]
     for item in files:
         if item.get("file") == "peer_universe.csv":
             item["source_type"] = "user_provided" if source == "user_provided" else "public_market_data"
@@ -1048,6 +1180,8 @@ def main() -> int:
     args = parse_args()
     if args.max_peers < 1:
         raise SystemExit("--max-peers must be positive")
+    if args.financial_statement_period_limit < 1:
+        raise SystemExit("--financial-statement-period-limit must be positive")
     if args.research_report_lookback_days < 1:
         raise SystemExit("--research-report-lookback-days must be positive")
     if args.research_report_limit < 1:
@@ -1087,6 +1221,7 @@ def main() -> int:
     write_csv(peer_path, peer_rows, PEER_COLUMNS)
     log_step("wrote candidate_peer_universe.csv and peer_universe.csv")
     run_public_data_fetcher(args, peer_path, output_dir)
+    financial_statement_result = run_financial_statement_fetcher(args, peer_path, output_dir)
     run_events_risks_fetcher(args, peer_path, output_dir)
     run_market_context_fetcher(args, output_dir)
     run_macro_context_fetcher(args, output_dir)
@@ -1101,7 +1236,13 @@ def main() -> int:
     run_investor_interaction_fetcher(args, peer_path, output_dir)
     log_step("patching source manifest and writing auto prepare manifest")
     patch_source_manifest(output_dir, args, source)
-    write_auto_prepare_manifest(output_dir / "auto_prepare_manifest.json", args, source, selection)
+    write_auto_prepare_manifest(
+        output_dir / "auto_prepare_manifest.json",
+        args,
+        source,
+        selection,
+        financial_statement_result,
+    )
 
     print(f"wrote auto research-pack: {output_dir}")
     if selection["universe_size_warning"]:
