@@ -77,11 +77,25 @@ INCOME_STATEMENT_CORE_ORDER = [
     "basic_eps",
     "diluted_eps",
 ]
+CASH_FLOW_STATEMENT_CORE_ORDER = [
+    "net_cash_flow_from_operating_activities",
+    "net_cash_flow_from_investing_activities",
+    "net_cash_flow_from_financing_activities",
+    "cash_paid_for_acquisition_of_long_term_assets",
+    "net_increase_in_cash_and_cash_equivalents",
+    "ending_cash_and_cash_equivalents",
+    "depreciation_and_amortization",
+]
 CORE_ORDER = {
     "balance_sheet": BALANCE_SHEET_CORE_ORDER,
     "income_statement": INCOME_STATEMENT_CORE_ORDER,
+    "cash_flow_statement": CASH_FLOW_STATEMENT_CORE_ORDER,
 }
-STATEMENT_TYPE_ORDER = {"balance_sheet": 0, "income_statement": 1}
+STATEMENT_TYPE_ORDER = {
+    "balance_sheet": 0,
+    "income_statement": 1,
+    "cash_flow_statement": 2,
+}
 
 
 def write_peers(path: Path) -> None:
@@ -193,13 +207,22 @@ def validate_success(errors: list[str]) -> None:
             return
         if {row["security_code"] for row in rows} != {"600519.SH", "002594.SZ"}:
             errors.append("成功场景必须同时覆盖沪深证券")
-        if {row["statement_type"] for row in rows} != {"balance_sheet", "income_statement"}:
-            errors.append("成功场景必须同时输出资产负债表和利润表明细")
+        if {row["statement_type"] for row in rows} != {
+            "balance_sheet",
+            "income_statement",
+            "cash_flow_statement",
+        }:
+            errors.append("成功场景必须同时输出资产负债表、利润表和现金流量表明细")
         if any(
-            row["value_semantics"] != {"balance_sheet": "point_in_time", "income_statement": "year_to_date"}[row["statement_type"]]
+            row["value_semantics"]
+            != {
+                "balance_sheet": "point_in_time",
+                "income_statement": "year_to_date",
+                "cash_flow_statement": "year_to_date",
+            }[row["statement_type"]]
             for row in rows
         ):
-            errors.append("两类报表必须使用各自固定的期间语义")
+            errors.append("三类报表必须使用各自固定的期间语义")
         if any(row["statement_scope"] != "来源缺失" for row in rows):
             errors.append("来源未声明范围时 statement_scope 必须为来源缺失")
         if any(
@@ -302,6 +325,53 @@ def validate_success(errors: list[str]) -> None:
         if any(row["overseas_audit_opinion"] != "来源缺失" for row in income_audit_rows):
             errors.append("利润表未提供海外审计意见时必须写来源缺失")
 
+        latest_cash_flow_rows = [
+            row for row in rows
+            if row["period"] == "2025-12-31" and row["statement_type"] == "cash_flow_statement"
+        ]
+        latest_cash_flow_core = {
+            row["normalized_line_item"]
+            for row in latest_cash_flow_rows
+            if row["security_code"] == "600519.SH"
+        }
+        if not set(CASH_FLOW_STATEMENT_CORE_ORDER).issubset(latest_cash_flow_core):
+            errors.append("沪市成功样本未覆盖全部现金流量表核心科目")
+        ending_cash_conflict = [
+            row
+            for row in latest_cash_flow_rows
+            if row["security_code"] == "600519.SH" and row["source_line_item"] == "END_CASH"
+        ]
+        if len(ending_cash_conflict) != 1 or ending_cash_conflict[0]["normalized_line_item"] != "来源缺失":
+            errors.append("现金流量表期末现金映射冲突中的低优先级原始行必须保留且不得获得规范名称")
+        ending_cash = [
+            row
+            for row in latest_cash_flow_rows
+            if row["security_code"] == "600519.SH" and row["source_line_item"] == "END_CCE"
+        ]
+        if len(ending_cash) != 1 or ending_cash[0]["normalized_line_item"] != "ending_cash_and_cash_equivalents":
+            errors.append("现金流量表期末现金映射必须优先使用 END_CCE")
+        depreciation_placeholder = [
+            row
+            for row in latest_cash_flow_rows
+            if row["security_code"] == "002594.SZ"
+            and row["normalized_line_item"] == "depreciation_and_amortization"
+        ]
+        if (
+            len(depreciation_placeholder) != 1
+            or depreciation_placeholder[0]["source_line_item"] != "core:depreciation_and_amortization"
+        ):
+            errors.append("现金流量表缺失核心科目必须生成唯一折旧摊销占位行")
+        if any(row["source_line_item"].endswith("_YOY") for row in latest_cash_flow_rows):
+            errors.append("同比字段不应生成现金流量表行项目")
+        ending_cash_balance = [
+            row for row in latest_cash_flow_rows if row["source_line_item"] == "END_CCE_BALANCE"
+        ]
+        if not ending_cash_balance or any(
+            row["unit"] != "CNY" or row["verification_status"] != "verified"
+            for row in ending_cash_balance
+        ):
+            errors.append("已知现金流量表字段 END_CCE_BALANCE 必须使用 CNY 和 verified")
+
         manifest_path = output / "source_manifest.json"
         errors_path = output / "fetch_errors.csv"
         if not manifest_path.is_file() or not errors_path.is_file():
@@ -314,15 +384,90 @@ def validate_success(errors: list[str]) -> None:
         ]
         if len(entries) != 1:
             errors.append("来源清单必须只包含一条财务报表明细条目")
-        elif any(token not in str(entries[0]) for token in ["资产负债表", "利润表", "2", "时点", "累计", "来源缺失"]):
-            errors.append("来源清单缺少两类报表、期间数量、时点/累计语义或范围边界")
+        elif any(
+            token not in str(entries[0])
+            for token in ["资产负债表", "利润表", "现金流量表", "2", "时点", "累计", "共享", "来源缺失"]
+        ):
+            errors.append("来源清单缺少三表、共享窗口、期间数量、时点/累计语义或范围边界")
         if read_rows(errors_path):
             errors.append("成功场景不应产生抓取错误")
 
         first_bytes = statements_path.read_bytes()
         second = run_fetcher(root, peers)
         if second.returncode != 0 or statements_path.read_bytes() != first_bytes:
-            errors.append("相同 fixture 重跑必须生成字节稳定的财务报表 CSV")
+            errors.append("相同 fixture 重跑必须生成字节稳定的三表财务报表 CSV")
+
+
+def validate_shared_period_window(errors: list[str]) -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        peers = root / "peers.csv"
+        write_peers(peers)
+        result = run_fetcher(root, peers, "--period-limit", "12")
+        if result.returncode != 0:
+            errors.append(f"默认共享窗口场景退出码为 {result.returncode}: {result.stderr}")
+            return
+        rows = read_rows(root / "output" / "financial_statements.csv")
+        expected_periods = {
+            "2025-12-31",
+            "2025-09-30",
+            "2025-06-30",
+            "2025-03-31",
+            "2024-12-31",
+            "2024-09-30",
+            "2024-06-30",
+            "2024-03-31",
+            "2023-12-31",
+            "2023-09-30",
+            "2023-06-30",
+            "2023-03-31",
+        }
+        for code in {"600519.SH", "002594.SZ"}:
+            for statement_type in STATEMENT_TYPE_ORDER:
+                periods = {
+                    row["period"]
+                    for row in rows
+                    if row["security_code"] == code and row["statement_type"] == statement_type
+                }
+                if periods != expected_periods:
+                    errors.append("默认期间数量必须选择三表共享的最新 12 个报告期")
+                    break
+        if not {"一季报", "中报", "三季报", "年报"}.issubset({row["report_type"] for row in rows}):
+            errors.append("一季报、中报、三季报和年报都必须能够进入共享报告期窗口")
+
+        configured = run_fetcher(root, peers, "--period-limit", "3")
+        if configured.returncode != 0:
+            errors.append(f"可配置共享窗口场景退出码为 {configured.returncode}: {configured.stderr}")
+            return
+        configured_rows = read_rows(root / "output" / "financial_statements.csv")
+        if {row["period"] for row in configured_rows} != {"2025-12-31", "2025-09-30", "2025-06-30"}:
+            errors.append("可配置期间数量必须作用于公司级共享报告期窗口")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        peers = root / "peers.csv"
+        write_peers(peers)
+        result = run_fetcher(root, peers, "--period-limit", "2", "--fixture-scenario", "window-gap")
+        if result.returncode != 0:
+            errors.append(f"共享窗口缺期场景退出码为 {result.returncode}: {result.stderr}")
+            return
+        rows = read_rows(root / "output" / "financial_statements.csv")
+        income_periods = {
+            row["period"]
+            for row in rows
+            if row["security_code"] == "600519.SH" and row["statement_type"] == "income_statement"
+        }
+        if income_periods != {"2025-12-31"} or "2025-06-30" in income_periods:
+            errors.append("缺失窗口内利润表时不得用窗口外更早期间补位")
+        missing = [
+            row
+            for row in read_rows(root / "output" / "fetch_errors.csv")
+            if row["code"] == "600519.SH"
+            and row["stage"] == "financial_statement_income_statement_no_data"
+            and "2025-09-30" in row["error"]
+        ]
+        if len(missing) != 1:
+            errors.append("窗口内缺失利润表必须记录包含具体报告期的 no_data 错误")
 
 
 def validate_input_errors(errors: list[str]) -> None:
@@ -470,6 +615,7 @@ def validate_bj_unsupported(errors: list[str]) -> None:
 def main() -> int:
     errors: list[str] = []
     validate_success(errors)
+    validate_shared_period_window(errors)
     validate_input_errors(errors)
     validate_unknown_field(errors)
     validate_income_statement_degradations(errors)
@@ -479,7 +625,7 @@ def main() -> int:
         for error in errors:
             print(f"  ✗ {error}", file=sys.stderr)
         return 1
-    print("OK — A 股资产负债表和利润表明细 CLI 契约已验证。")
+    print("OK — A 股三表明细 CLI 契约已验证。")
     return 0
 
 

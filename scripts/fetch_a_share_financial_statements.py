@@ -108,17 +108,41 @@ INCOME_STATEMENT_CORE_MAPPINGS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("basic_eps", ("BASIC_EPS",)),
     ("diluted_eps", ("DILUTED_EPS",)),
 )
+CASH_FLOW_STATEMENT_CORE_MAPPINGS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("net_cash_flow_from_operating_activities", ("NETCASH_OPERATE",)),
+    ("net_cash_flow_from_investing_activities", ("NETCASH_INVEST",)),
+    ("net_cash_flow_from_financing_activities", ("NETCASH_FINANCE",)),
+    ("cash_paid_for_acquisition_of_long_term_assets", ("CONSTRUCT_LONG_ASSET",)),
+    ("net_increase_in_cash_and_cash_equivalents", ("CCE_ADD",)),
+    ("ending_cash_and_cash_equivalents", ("END_CCE", "END_CASH")),
+    ("depreciation_and_amortization", ("FA_IR_DEPR", "IR_DEPR")),
+)
 CORE_MAPPINGS = {
     "balance_sheet": BALANCE_SHEET_CORE_MAPPINGS,
     "income_statement": INCOME_STATEMENT_CORE_MAPPINGS,
+    "cash_flow_statement": CASH_FLOW_STATEMENT_CORE_MAPPINGS,
 }
 CORE_ORDER = {
     statement_type: {name: index for index, (name, _) in enumerate(mappings)}
     for statement_type, mappings in CORE_MAPPINGS.items()
 }
-STATEMENT_TYPE_ORDER = {"balance_sheet": 0, "income_statement": 1}
-STATEMENT_LABELS = {"balance_sheet": "资产负债表", "income_statement": "利润表"}
-VALUE_SEMANTICS = {"balance_sheet": "point_in_time", "income_statement": "year_to_date"}
+STATEMENT_TYPE_ORDER = {
+    "balance_sheet": 0,
+    "income_statement": 1,
+    "cash_flow_statement": 2,
+}
+STATEMENT_LABELS = {
+    "balance_sheet": "资产负债表",
+    "income_statement": "利润表",
+    "cash_flow_statement": "现金流量表",
+}
+VALUE_SEMANTICS = {
+    "balance_sheet": "point_in_time",
+    "income_statement": "year_to_date",
+    "cash_flow_statement": "year_to_date",
+}
+STATEMENT_TYPES = ("balance_sheet", "income_statement", "cash_flow_statement")
+REGULAR_REPORT_TYPES = frozenset({"一季报", "中报", "三季报", "年报"})
 
 # 当前 AkShare 资产负债表接口公开的金额字段目录。目录是刻意显式维护的：
 # 不能因为未知字段的名称或数值看起来像金额就自行猜测其单位。
@@ -199,10 +223,53 @@ KNOWN_INCOME_STATEMENT_FIELDS = frozenset(
     ACF_END_INCOME
     """.split()
 )
+
+# 当前 AkShare 现金流量表接口公开的金额字段目录。同比字段明确排除，
+# 以免把增长率混入来源披露的期间累计金额。
+KNOWN_CASH_FLOW_STATEMENT_FIELDS = frozenset(
+    """
+    SALES_SERVICES DEPOSIT_INTERBANK_ADD LOAN_PBC_ADD OFI_BF_ADD
+    RECEIVE_ORIGIC_PREMIUM RECEIVE_REINSURE_NET INSURED_INVEST_ADD
+    DISPOSAL_TFA_ADD RECEIVE_INTEREST_COMMISSION BORROW_FUND_ADD
+    LOAN_ADVANCE_REDUCE REPO_BUSINESS_ADD RECEIVE_TAX_REFUND
+    RECEIVE_OTHER_OPERATE OPERATE_INFLOW_OTHER OPERATE_INFLOW_BALANCE
+    TOTAL_OPERATE_INFLOW BUY_SERVICES LOAN_ADVANCE_ADD PBC_INTERBANK_ADD
+    PAY_ORIGIC_COMPENSATE PAY_INTEREST_COMMISSION PAY_POLICY_BONUS
+    PAY_STAFF_CASH PAY_ALL_TAX PAY_OTHER_OPERATE OPERATE_OUTFLOW_OTHER
+    OPERATE_OUTFLOW_BALANCE TOTAL_OPERATE_OUTFLOW OPERATE_NETCASH_OTHER
+    OPERATE_NETCASH_BALANCE NETCASH_OPERATE WITHDRAW_INVEST
+    RECEIVE_INVEST_INCOME DISPOSAL_LONG_ASSET DISPOSAL_SUBSIDIARY_OTHER
+    REDUCE_PLEDGE_TIMEDEPOSITS RECEIVE_OTHER_INVEST INVEST_INFLOW_OTHER
+    INVEST_INFLOW_BALANCE TOTAL_INVEST_INFLOW CONSTRUCT_LONG_ASSET
+    INVEST_PAY_CASH PLEDGE_LOAN_ADD OBTAIN_SUBSIDIARY_OTHER
+    ADD_PLEDGE_TIMEDEPOSITS PAY_OTHER_INVEST INVEST_OUTFLOW_OTHER
+    INVEST_OUTFLOW_BALANCE TOTAL_INVEST_OUTFLOW INVEST_NETCASH_OTHER
+    INVEST_NETCASH_BALANCE NETCASH_INVEST ACCEPT_INVEST_CASH
+    SUBSIDIARY_ACCEPT_INVEST RECEIVE_LOAN_CASH ISSUE_BOND RECEIVE_OTHER_FINANCE
+    FINANCE_INFLOW_OTHER FINANCE_INFLOW_BALANCE TOTAL_FINANCE_INFLOW
+    PAY_DEBT_CASH ASSIGN_DIVIDEND_PORFIT SUBSIDIARY_PAY_DIVIDEND
+    BUY_SUBSIDIARY_EQUITY PAY_OTHER_FINANCE SUBSIDIARY_REDUCE_CASH
+    FINANCE_OUTFLOW_OTHER FINANCE_OUTFLOW_BALANCE TOTAL_FINANCE_OUTFLOW
+    FINANCE_NETCASH_OTHER FINANCE_NETCASH_BALANCE NETCASH_FINANCE
+    RATE_CHANGE_EFFECT CCE_ADD_OTHER CCE_ADD_BALANCE CCE_ADD BEGIN_CCE
+    END_CCE_OTHER END_CCE_BALANCE END_CCE NETPROFIT ASSET_IMPAIRMENT FA_IR_DEPR
+    OILGAS_BIOLOGY_DEPR IR_DEPR IA_AMORTIZE LPE_AMORTIZE
+    DEFER_INCOME_AMORTIZE PREPAID_EXPENSE_REDUCE ACCRUED_EXPENSE_ADD
+    DISPOSAL_LONGASSET_LOSS FA_SCRAP_LOSS FAIRVALUE_CHANGE_LOSS
+    FINANCE_EXPENSE INVEST_LOSS DEFER_TAX DT_ASSET_REDUCE DT_LIAB_ADD
+    PREDICT_LIAB_ADD INVENTORY_REDUCE OPERATE_RECE_REDUCE OPERATE_PAYABLE_ADD
+    OTHER OPERATE_NETCASH_OTHERNOTE OPERATE_NETCASH_BALANCENOTE
+    NETCASH_OPERATENOTE DEBT_TRANSFER_CAPITAL CONVERT_BOND_1YEAR
+    FINLEASE_OBTAIN_FA UNINVOLVE_INVESTFIN_OTHER END_CASH BEGIN_CASH
+    END_CASH_EQUIVALENTS BEGIN_CASH_EQUIVALENTS CCE_ADD_OTHERNOTE
+    CCE_ADD_BALANCENOTE CCE_ADDNOTE MINORITY_INTEREST USERIGHT_ASSET_AMORTIZE
+    """.split()
+)
 PER_SHARE_FIELDS = frozenset({"BASIC_EPS", "DILUTED_EPS"})
 KNOWN_FIELDS = {
     "balance_sheet": KNOWN_AMOUNT_FIELDS,
     "income_statement": KNOWN_INCOME_STATEMENT_FIELDS,
+    "cash_flow_statement": KNOWN_CASH_FLOW_STATEMENT_FIELDS,
 }
 
 
@@ -214,7 +281,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--period-limit",
         default="12",
-        help="每个证券每张报表最多保留的报告期数，默认 12。",
+        help="每个证券三表共享的报告期窗口最多保留的报告期数，默认 12。",
     )
     parser.add_argument(
         "--source",
@@ -224,7 +291,14 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--fixture-scenario",
-        choices=["success", "no-data", "unknown-field", "non-annual", "invalid-income-value"],
+        choices=[
+            "success",
+            "no-data",
+            "unknown-field",
+            "non-annual",
+            "invalid-income-value",
+            "window-gap",
+        ],
         default="success",
         help="fixture 离线场景。",
     )
@@ -473,6 +547,12 @@ def normalize_record(
 
 
 def fixture_metadata(peer: dict[str, str], period: str, sequence: int) -> dict[str, Any]:
+    report_type = {
+        "03-31": "一季报",
+        "06-30": "中报",
+        "09-30": "三季报",
+        "12-31": "年报",
+    }[period[5:]]
     return {
         "SECUCODE": peer["code"],
         "SECURITY_CODE": peer["code"].split(".", 1)[0],
@@ -480,8 +560,8 @@ def fixture_metadata(peer: dict[str, str], period: str, sequence: int) -> dict[s
         "ORG_CODE": f"fixture-{sequence}",
         "ORG_TYPE": "通用",
         "REPORT_DATE": f"{period} 00:00:00",
-        "REPORT_TYPE": "年报",
-        "REPORT_DATE_NAME": f"{period[:4]}年报",
+        "REPORT_TYPE": report_type,
+        "REPORT_DATE_NAME": f"{period[:4]}{report_type}",
         "SECURITY_TYPE_CODE": "058001001",
         "NOTICE_DATE": f"{int(period[:4]) + 1}-03-20 00:00:00",
         "UPDATE_DATE": f"{int(period[:4]) + 1}-03-20 00:00:00",
@@ -554,23 +634,57 @@ def income_statement_fixture_record(peer: dict[str, str], period: str, sequence:
     return record
 
 
+def cash_flow_statement_fixture_record(peer: dict[str, str], period: str, sequence: int) -> dict[str, Any]:
+    amount = 3000 + sequence * 100
+    record = fixture_metadata(peer, period, sequence)
+    record.update(
+        {
+            "NETCASH_OPERATE": amount + 1,
+            "NETCASH_INVEST": amount + 2,
+            "NETCASH_FINANCE": amount + 3,
+            "CONSTRUCT_LONG_ASSET": amount + 4,
+            "CCE_ADD": amount + 5,
+            "END_CCE_BALANCE": 0,
+            "END_CCE": amount + 6,
+            "END_CASH": amount + 7,
+            "FA_IR_DEPR": amount + 8,
+            "NETCASH_OPERATE_YOY": "8.2",
+        }
+    )
+    if peer["code"] == "002594.SZ" and period == "2025-12-31":
+        record.pop("FA_IR_DEPR")
+    return record
+
+
+FIXTURE_PERIODS = (
+    "2025-12-31",
+    "2025-09-30",
+    "2025-06-30",
+    "2025-03-31",
+    "2024-12-31",
+    "2024-09-30",
+    "2024-06-30",
+    "2024-03-31",
+    "2023-12-31",
+    "2023-09-30",
+    "2023-06-30",
+    "2023-03-31",
+    "2022-12-31",
+    "2022-09-30",
+)
+
+
 def fixture_records(
     statement_type: str, peer: dict[str, str], scenario: str, sequence: int
 ) -> list[dict[str, Any]]:
     if scenario == "no-data":
         return []
-    records = [
-        (
-            balance_sheet_fixture_record(peer, "2025-12-31", sequence)
-            if statement_type == "balance_sheet"
-            else income_statement_fixture_record(peer, "2025-12-31", sequence)
-        ),
-        (
-            balance_sheet_fixture_record(peer, "2024-12-31", sequence)
-            if statement_type == "balance_sheet"
-            else income_statement_fixture_record(peer, "2024-12-31", sequence)
-        ),
-    ]
+    builders = {
+        "balance_sheet": balance_sheet_fixture_record,
+        "income_statement": income_statement_fixture_record,
+        "cash_flow_statement": cash_flow_statement_fixture_record,
+    }
+    records = [builders[statement_type](peer, period, sequence) for period in FIXTURE_PERIODS]
     if scenario == "unknown-field" and statement_type == "balance_sheet":
         records[0]["FUTURE_ASSET_ITEM"] = 9876
     if scenario == "non-annual":
@@ -578,6 +692,8 @@ def fixture_records(
             record["REPORT_TYPE"] = "中报"
     if scenario == "invalid-income-value" and statement_type == "income_statement":
         records[0]["BASIC_EPS"] = "not-a-number"
+    if scenario == "window-gap" and statement_type == "income_statement":
+        records = [record for record in records if record["REPORT_DATE"][:10] != "2025-09-30"]
     return records
 
 
@@ -587,28 +703,33 @@ def fetch_akshare_records(statement_type: str, code: str) -> list[dict[str, Any]
     symbol, exchange = code.split(".", 1)
     if statement_type == "balance_sheet":
         frame = ak.stock_balance_sheet_by_report_em(symbol=f"{exchange}{symbol}")
-    else:
+    elif statement_type == "income_statement":
         frame = ak.stock_profit_sheet_by_report_em(symbol=f"{exchange}{symbol}")
+    else:
+        frame = ak.stock_cash_flow_sheet_by_report_em(symbol=f"{exchange}{symbol}")
     return list(frame.to_dict("records"))
 
 
-def select_records(records: list[dict[str, Any]], as_of: dt.date, period_limit: int) -> list[dict[str, Any]]:
-    eligible: list[tuple[dt.date, dict[str, Any]]] = []
+def records_by_period(records: list[dict[str, Any]], as_of: dt.date) -> dict[dt.date, dict[str, Any]]:
+    eligible: dict[dt.date, dict[str, Any]] = {}
     for record in records:
-        period = parse_date(record.get("REPORT_DATE"), "REPORT_DATE")
-        if period <= as_of:
-            eligible.append((period, record))
-    eligible.sort(key=lambda item: item[0], reverse=True)
-    selected: list[dict[str, Any]] = []
-    periods: set[dt.date] = set()
-    for period, record in eligible:
-        if period in periods:
+        if str(record.get("REPORT_TYPE") or MISSING) not in REGULAR_REPORT_TYPES:
             continue
-        periods.add(period)
-        selected.append(record)
-        if len(selected) >= period_limit:
-            break
-    return selected
+        period = parse_date(record.get("REPORT_DATE"), "REPORT_DATE")
+        if period <= as_of and period not in eligible:
+            eligible[period] = record
+    return eligible
+
+
+def shared_period_window(
+    records_by_statement: dict[str, dict[dt.date, dict[str, Any]]], period_limit: int
+) -> list[dt.date]:
+    periods = {
+        period
+        for records in records_by_statement.values()
+        for period in records
+    }
+    return sorted(periods, reverse=True)[:period_limit]
 
 
 def sort_rows(rows: list[dict[str, str]]) -> list[dict[str, str]]:
@@ -649,14 +770,15 @@ def write_manifest(output_dir: Path, as_of: str, period_limit: int) -> None:
             "source_name": SOURCE_NAME,
             "data_time": as_of[:10],
             "period_or_basis": (
-                f"资产负债表和利润表；截至 {as_of[:10]} 每证券每表最多 {period_limit} 个报告期；"
-                "资产负债表为报告期末时点值，利润表为年初至报告期末累计值；"
+                f"资产负债表、利润表和现金流量表；截至 {as_of[:10]} 每证券共享最多 {period_limit} 个报告期；"
+                "资产负债表为报告期末时点值，利润表和现金流量表为年初至报告期末累计值；"
+                "三表共享公司级报告期窗口，窗口内缺期不以更早期间补位；"
                 "金额为人民币元、每股收益为人民币元/股；规范核心科目保留明确来源字段；"
                 "statement_scope 为来源缺失"
             ),
             "verification_status": "verified",
             "missing_behavior": (
-                "无数据写对应 financial_statement_*_no_data；输入或请求失败写对应 "
+                "整表或共享窗口内缺期写对应 financial_statement_*_no_data；输入或请求失败写对应 "
                 "financial_statement 阶段；来源未声明报表范围时为来源缺失，不得据此执行跨公司比较"
             ),
         }
@@ -721,7 +843,8 @@ def run_pipeline(args: argparse.Namespace) -> int:
                 )
             )
             continue
-        for statement_type in ("balance_sheet", "income_statement"):
+        peer_records: dict[str, dict[dt.date, dict[str, Any]]] = {}
+        for statement_type in STATEMENT_TYPES:
             label = STATEMENT_LABELS[statement_type]
             try:
                 records = (
@@ -729,28 +852,47 @@ def run_pipeline(args: argparse.Namespace) -> int:
                     if args.source == "fixture"
                     else fetch_akshare_records(statement_type, peer["code"])
                 )
-                selected = select_records(records, as_of, period_limit)
-                if not selected:
-                    errors.append(
-                        error_row(
-                            peer["code"],
-                            f"financial_statement_{statement_type}_no_data",
-                            f"截至 {as_of.isoformat()} 未返回可用{label}",
-                        )
-                    )
-                    continue
-                for record in selected:
-                    normalized_rows, schema_messages = normalize_record(statement_type, record, peer)
-                    rows.extend(normalized_rows)
-                    errors.extend(
-                        error_row(peer["code"], "financial_statement_schema", message)
-                        for message in schema_messages
-                    )
+                peer_records[statement_type] = records_by_period(records, as_of)
             except Exception as exc:
                 errors.append(error_row(peer["code"], f"financial_statement_{statement_type}", str(exc)))
 
+        window = shared_period_window(peer_records, period_limit)
+        for statement_type in STATEMENT_TYPES:
+            records = peer_records.get(statement_type)
+            if records is None:
+                continue
+            label = STATEMENT_LABELS[statement_type]
+            if not records:
+                errors.append(
+                    error_row(
+                        peer["code"],
+                        f"financial_statement_{statement_type}_no_data",
+                        f"截至 {as_of.isoformat()} 未返回可用{label}",
+                    )
+                )
+                continue
+            missing_periods = [period.isoformat() for period in window if period not in records]
+            if missing_periods:
+                errors.append(
+                    error_row(
+                        peer["code"],
+                        f"financial_statement_{statement_type}_no_data",
+                        f"共享报告期窗口内缺少{label}: {', '.join(missing_periods)}",
+                    )
+                )
+            for period in window:
+                record = records.get(period)
+                if record is None:
+                    continue
+                normalized_rows, schema_messages = normalize_record(statement_type, record, peer)
+                rows.extend(normalized_rows)
+                errors.extend(
+                    error_row(peer["code"], "financial_statement_schema", message)
+                    for message in schema_messages
+                )
+
     write_outputs(output_dir, rows, errors, args.as_of, period_limit)
-    print(f"已写入资产负债表和利润表明细: {output_dir}")
+    print(f"已写入资产负债表、利润表和现金流量表明细: {output_dir}")
     if errors:
         print(f"财务报表明细完成，含 {len(errors)} 条提示", file=sys.stderr)
     return 0
