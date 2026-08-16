@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""离线验证 A 股资产负债表明细公开 CLI 契约。"""
+"""离线验证 A 股财务报表明细公开 CLI 契约。"""
 
 from __future__ import annotations
 
@@ -38,7 +38,7 @@ STATEMENT_COLUMNS = [
     "verification_status",
     "basis",
 ]
-CORE_ORDER = [
+BALANCE_SHEET_CORE_ORDER = [
     "monetary_funds",
     "accounts_receivable",
     "inventory",
@@ -61,6 +61,27 @@ CORE_ORDER = [
     "minority_interests",
     "total_equity",
 ]
+INCOME_STATEMENT_CORE_ORDER = [
+    "revenue",
+    "cost_of_revenue",
+    "selling_expenses",
+    "administrative_expenses",
+    "research_and_development_expenses",
+    "financial_expenses",
+    "operating_profit",
+    "total_profit",
+    "income_tax_expense",
+    "net_profit",
+    "net_profit_attributable_to_parent",
+    "minority_profit",
+    "basic_eps",
+    "diluted_eps",
+]
+CORE_ORDER = {
+    "balance_sheet": BALANCE_SHEET_CORE_ORDER,
+    "income_statement": INCOME_STATEMENT_CORE_ORDER,
+}
+STATEMENT_TYPE_ORDER = {"balance_sheet": 0, "income_statement": 1}
 
 
 def write_peers(path: Path) -> None:
@@ -134,12 +155,14 @@ def stable_id(row: dict[str, str]) -> str:
 
 def expected_sort_key(row: dict[str, str]) -> tuple[object, ...]:
     normalized = row["normalized_line_item"]
-    core_index = CORE_ORDER.index(normalized) if normalized in CORE_ORDER else len(CORE_ORDER)
+    core_order = CORE_ORDER[row["statement_type"]]
+    core_index = core_order.index(normalized) if normalized in core_order else len(core_order)
     return (
         row["security_code"],
         -int(row["period"].replace("-", "")),
+        STATEMENT_TYPE_ORDER[row["statement_type"]],
         core_index,
-        "" if normalized in CORE_ORDER else row["source_line_item"],
+        "" if normalized in core_order else row["source_line_item"],
         row["statement_item_id"],
     )
 
@@ -166,14 +189,17 @@ def validate_success(errors: list[str]) -> None:
             rows = list(reader)
 
         if not rows:
-            errors.append("成功场景未输出资产负债表明细")
+            errors.append("成功场景未输出财务报表明细")
             return
         if {row["security_code"] for row in rows} != {"600519.SH", "002594.SZ"}:
             errors.append("成功场景必须同时覆盖沪深证券")
-        if {row["statement_type"] for row in rows} != {"balance_sheet"}:
-            errors.append("Ticket 01 只能输出资产负债表明细")
-        if any(row["value_semantics"] != "point_in_time" for row in rows):
-            errors.append("资产负债表行必须使用 point_in_time")
+        if {row["statement_type"] for row in rows} != {"balance_sheet", "income_statement"}:
+            errors.append("成功场景必须同时输出资产负债表和利润表明细")
+        if any(
+            row["value_semantics"] != {"balance_sheet": "point_in_time", "income_statement": "year_to_date"}[row["statement_type"]]
+            for row in rows
+        ):
+            errors.append("两类报表必须使用各自固定的期间语义")
         if any(row["statement_scope"] != "来源缺失" for row in rows):
             errors.append("来源未声明范围时 statement_scope 必须为来源缺失")
         if any(
@@ -181,16 +207,16 @@ def validate_success(errors: list[str]) -> None:
             or row["source_name"] != "AkShare（东方财富财务报表）"
             for row in rows
         ):
-            errors.append("资产负债表行来源元数据不符合契约")
+            errors.append("财务报表行来源元数据不符合契约")
         if any(
             row["statement_item_id"] != stable_id(row)
             or not row["statement_item_id"].startswith("fs_")
             or len(row["statement_item_id"]) != 27
             for row in rows
         ):
-            errors.append("资产负债表行稳定 ID 不符合身份键契约")
+            errors.append("财务报表行稳定 ID 不符合身份键契约")
         if rows != sorted(rows, key=expected_sort_key):
-            errors.append("资产负债表行排序不符合证券、期间、核心科目和来源字段契约")
+            errors.append("财务报表行排序不符合证券、期间、报表类型、核心科目和来源字段契约")
         if any(row["source_line_item"].endswith("_YOY") for row in rows):
             errors.append("同比字段不应生成资产负债表行项目")
         if any(row["source_line_item"] in {"REPORT_DATE", "ORG_TYPE", "OPINION_TYPE"} for row in rows):
@@ -202,7 +228,7 @@ def validate_success(errors: list[str]) -> None:
             for row in latest_rows
             if row["security_code"] == "600519.SH"
         }
-        if not set(CORE_ORDER).issubset(latest_core):
+        if not set(BALANCE_SHEET_CORE_ORDER).issubset(latest_core):
             errors.append("沪市成功样本未覆盖全部资产负债表核心科目")
         mapping_conflict = [
             row
@@ -236,6 +262,46 @@ def validate_success(errors: list[str]) -> None:
         if any(row["organization_type"] == "" or row["currency"] == "" for row in rows):
             errors.append("成功场景必须保留组织类型和币种元数据")
 
+        latest_income_rows = [
+            row for row in rows
+            if row["period"] == "2025-12-31" and row["statement_type"] == "income_statement"
+        ]
+        latest_income_core = {
+            row["normalized_line_item"]
+            for row in latest_income_rows
+            if row["security_code"] == "600519.SH"
+        }
+        if not set(INCOME_STATEMENT_CORE_ORDER).issubset(latest_income_core):
+            errors.append("沪市成功样本未覆盖全部利润表核心科目")
+        revenue_conflict = [
+            row for row in latest_income_rows
+            if row["security_code"] == "600519.SH" and row["source_line_item"] == "OPERATE_INCOME"
+        ]
+        if len(revenue_conflict) != 1 or revenue_conflict[0]["normalized_line_item"] != "来源缺失":
+            errors.append("利润表收入映射冲突中的低优先级原始行必须保留且不得获得规范名称")
+        revenue = [
+            row for row in latest_income_rows
+            if row["security_code"] == "600519.SH" and row["source_line_item"] == "TOTAL_OPERATE_INCOME"
+        ]
+        if len(revenue) != 1 or revenue[0]["normalized_line_item"] != "revenue":
+            errors.append("利润表收入映射必须优先使用 TOTAL_OPERATE_INCOME")
+        diluted_eps_placeholder = [
+            row for row in latest_income_rows
+            if row["security_code"] == "002594.SZ" and row["normalized_line_item"] == "diluted_eps"
+        ]
+        if len(diluted_eps_placeholder) != 1 or diluted_eps_placeholder[0]["source_line_item"] != "core:diluted_eps":
+            errors.append("利润表缺失核心科目必须生成唯一 core:diluted_eps 占位行")
+        eps_rows = [row for row in rows if row["source_line_item"] in {"BASIC_EPS", "DILUTED_EPS"}]
+        if not eps_rows or any(row["unit"] != "CNY/share" or row["verification_status"] != "verified" for row in eps_rows):
+            errors.append("基本和稀释 EPS 必须使用 CNY/share 和 verified")
+        if any(row["source_line_item"].endswith("_YOY") for row in latest_income_rows):
+            errors.append("同比字段不应生成利润表行项目")
+        income_audit_rows = [row for row in latest_income_rows if row["security_code"] == "600519.SH"]
+        if any(row["domestic_audit_opinion"] != "标准无保留意见" for row in income_audit_rows):
+            errors.append("利润表必须保留来源国内审计意见")
+        if any(row["overseas_audit_opinion"] != "来源缺失" for row in income_audit_rows):
+            errors.append("利润表未提供海外审计意见时必须写来源缺失")
+
         manifest_path = output / "source_manifest.json"
         errors_path = output / "fetch_errors.csv"
         if not manifest_path.is_file() or not errors_path.is_file():
@@ -248,15 +314,15 @@ def validate_success(errors: list[str]) -> None:
         ]
         if len(entries) != 1:
             errors.append("来源清单必须只包含一条财务报表明细条目")
-        elif any(token not in str(entries[0]) for token in ["资产负债表", "2", "时点", "来源缺失"]):
-            errors.append("来源清单缺少资产负债表、期间数量、时点语义或范围边界")
+        elif any(token not in str(entries[0]) for token in ["资产负债表", "利润表", "2", "时点", "累计", "来源缺失"]):
+            errors.append("来源清单缺少两类报表、期间数量、时点/累计语义或范围边界")
         if read_rows(errors_path):
             errors.append("成功场景不应产生抓取错误")
 
         first_bytes = statements_path.read_bytes()
         second = run_fetcher(root, peers)
         if second.returncode != 0 or statements_path.read_bytes() != first_bytes:
-            errors.append("相同 fixture 重跑必须生成字节稳定的资产负债表 CSV")
+            errors.append("相同 fixture 重跑必须生成字节稳定的财务报表 CSV")
 
 
 def validate_input_errors(errors: list[str]) -> None:
@@ -365,7 +431,7 @@ def main() -> int:
         for error in errors:
             print(f"  ✗ {error}", file=sys.stderr)
         return 1
-    print("OK — A 股资产负债表明细 CLI 契约已验证。")
+    print("OK — A 股资产负债表和利润表明细 CLI 契约已验证。")
     return 0
 
 

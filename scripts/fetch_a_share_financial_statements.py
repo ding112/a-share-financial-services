@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""为 A 股 research-pack 抓取资产负债表明细。
+"""为 A 股 research-pack 抓取资产负债表和利润表明细。
 
-第一条财务报表明细 tracer bullet 仅覆盖沪深证券的资产负债表。它保留
-来源的非空行项目，并只为口径明确的核心项目提供规范名称；不把当前来源
-未声明的报表范围猜测为合并或母公司口径。
+保留来源的非空行项目，并只为口径明确的核心项目提供规范名称；不把当前
+来源未声明的报表范围猜测为合并或母公司口径。
 """
 
 from __future__ import annotations
@@ -70,7 +69,7 @@ BJ_PREFIXES = (
     "838", "839", "870", "871", "872", "873", "920",
 )
 
-CORE_MAPPINGS: tuple[tuple[str, tuple[str, ...]], ...] = (
+BALANCE_SHEET_CORE_MAPPINGS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("monetary_funds", ("MONETARYFUNDS",)),
     ("accounts_receivable", ("ACCOUNTS_RECE",)),
     ("inventory", ("INVENTORY",)),
@@ -93,7 +92,33 @@ CORE_MAPPINGS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("minority_interests", ("MINORITY_EQUITY",)),
     ("total_equity", ("TOTAL_EQUITY",)),
 )
-CORE_ORDER = {name: index for index, (name, _) in enumerate(CORE_MAPPINGS)}
+INCOME_STATEMENT_CORE_MAPPINGS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("revenue", ("TOTAL_OPERATE_INCOME", "OPERATE_INCOME")),
+    ("cost_of_revenue", ("OPERATE_COST",)),
+    ("selling_expenses", ("SALE_EXPENSE",)),
+    ("administrative_expenses", ("MANAGE_EXPENSE",)),
+    ("research_and_development_expenses", ("RESEARCH_EXPENSE", "ME_RESEARCH_EXPENSE")),
+    ("financial_expenses", ("FINANCE_EXPENSE",)),
+    ("operating_profit", ("OPERATE_PROFIT",)),
+    ("total_profit", ("TOTAL_PROFIT",)),
+    ("income_tax_expense", ("INCOME_TAX",)),
+    ("net_profit", ("NETPROFIT",)),
+    ("net_profit_attributable_to_parent", ("PARENT_NETPROFIT",)),
+    ("minority_profit", ("MINORITY_INTEREST",)),
+    ("basic_eps", ("BASIC_EPS",)),
+    ("diluted_eps", ("DILUTED_EPS",)),
+)
+CORE_MAPPINGS = {
+    "balance_sheet": BALANCE_SHEET_CORE_MAPPINGS,
+    "income_statement": INCOME_STATEMENT_CORE_MAPPINGS,
+}
+CORE_ORDER = {
+    statement_type: {name: index for index, (name, _) in enumerate(mappings)}
+    for statement_type, mappings in CORE_MAPPINGS.items()
+}
+STATEMENT_TYPE_ORDER = {"balance_sheet": 0, "income_statement": 1}
+STATEMENT_LABELS = {"balance_sheet": "资产负债表", "income_statement": "利润表"}
+VALUE_SEMANTICS = {"balance_sheet": "point_in_time", "income_statement": "year_to_date"}
 
 # 当前 AkShare 资产负债表接口公开的金额字段目录。目录是刻意显式维护的：
 # 不能因为未知字段的名称或数值看起来像金额就自行猜测其单位。
@@ -142,6 +167,44 @@ KNOWN_AMOUNT_FIELDS = frozenset(
     """.split()
 )
 
+# 当前 AkShare 利润表接口公开的金额和每股字段目录。同比字段明确排除，
+# 以免把增长率混入来源披露的期间累计金额。
+KNOWN_INCOME_STATEMENT_FIELDS = frozenset(
+    """
+    TOTAL_OPERATE_INCOME OPERATE_INCOME INTEREST_INCOME EARNED_PREMIUM
+    FEE_COMMISSION_INCOME OTHER_BUSINESS_INCOME TOI_OTHER TOTAL_OPERATE_COST
+    OPERATE_COST INTEREST_EXPENSE FEE_COMMISSION_EXPENSE RESEARCH_EXPENSE
+    SURRENDER_VALUE NET_COMPENSATE_EXPENSE NET_CONTRACT_RESERVE
+    POLICY_BONUS_EXPENSE REINSURE_EXPENSE OTHER_BUSINESS_COST OPERATE_TAX_ADD
+    SALE_EXPENSE MANAGE_EXPENSE ME_RESEARCH_EXPENSE FINANCE_EXPENSE
+    FE_INTEREST_EXPENSE FE_INTEREST_INCOME ASSET_IMPAIRMENT_LOSS
+    CREDIT_IMPAIRMENT_LOSS TOC_OTHER FAIRVALUE_CHANGE_INCOME INVEST_INCOME
+    INVEST_JOINT_INCOME NET_EXPOSURE_INCOME EXCHANGE_INCOME
+    ASSET_DISPOSAL_INCOME ASSET_IMPAIRMENT_INCOME CREDIT_IMPAIRMENT_INCOME
+    OTHER_INCOME OPERATE_PROFIT_OTHER OPERATE_PROFIT_BALANCE OPERATE_PROFIT
+    NONBUSINESS_INCOME NONCURRENT_DISPOSAL_INCOME NONBUSINESS_EXPENSE
+    NONCURRENT_DISPOSAL_LOSS EFFECT_TP_OTHER TOTAL_PROFIT_BALANCE TOTAL_PROFIT
+    INCOME_TAX EFFECT_NETPROFIT_OTHER EFFECT_NETPROFIT_BALANCE
+    UNCONFIRM_INVEST_LOSS NETPROFIT PRECOMBINE_PROFIT CONTINUED_NETPROFIT
+    DISCONTINUED_NETPROFIT PARENT_NETPROFIT MINORITY_INTEREST
+    DEDUCT_PARENT_NETPROFIT NETPROFIT_OTHER NETPROFIT_BALANCE BASIC_EPS
+    DILUTED_EPS OTHER_COMPRE_INCOME PARENT_OCI MINORITY_OCI PARENT_OCI_OTHER
+    PARENT_OCI_BALANCE UNABLE_OCI CREDITRISK_FAIRVALUE_CHANGE
+    OTHERRIGHT_FAIRVALUE_CHANGE SETUP_PROFIT_CHANGE RIGHTLAW_UNABLE_OCI
+    UNABLE_OCI_OTHER UNABLE_OCI_BALANCE ABLE_OCI RIGHTLAW_ABLE_OCI
+    AFA_FAIRVALUE_CHANGE HMI_AFA CASHFLOW_HEDGE_VALID CREDITOR_FAIRVALUE_CHANGE
+    CREDITOR_IMPAIRMENT_RESERVE FINANCE_OCI_AMT CONVERT_DIFF ABLE_OCI_OTHER
+    ABLE_OCI_BALANCE OCI_OTHER OCI_BALANCE TOTAL_COMPRE_INCOME PARENT_TCI
+    MINORITY_TCI PRECOMBINE_TCI EFFECT_TCI_BALANCE TCI_OTHER TCI_BALANCE
+    ACF_END_INCOME
+    """.split()
+)
+PER_SHARE_FIELDS = frozenset({"BASIC_EPS", "DILUTED_EPS"})
+KNOWN_FIELDS = {
+    "balance_sheet": KNOWN_AMOUNT_FIELDS,
+    "income_statement": KNOWN_INCOME_STATEMENT_FIELDS,
+}
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -151,7 +214,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--period-limit",
         default="12",
-        help="每个证券最多保留的资产负债表报告期数，默认 12。",
+        help="每个证券每张报表最多保留的报告期数，默认 12。",
     )
     parser.add_argument(
         "--source",
@@ -251,12 +314,12 @@ def parse_date(value: Any, field: str) -> dt.date:
     if isinstance(value, dt.date):
         return value
     if is_missing(value):
-        raise ValueError(f"资产负债表缺少 {field}")
+        raise ValueError(f"财务报表缺少 {field}")
     text = str(value).strip()
     try:
         return dt.date.fromisoformat(text[:10])
     except ValueError as exc:
-        raise ValueError(f"资产负债表 {field} 无法解析: {value!r}") from exc
+        raise ValueError(f"财务报表 {field} 无法解析: {value!r}") from exc
 
 
 def date_text(value: Any, field: str) -> str:
@@ -268,16 +331,16 @@ def statement_item_id(code: str, statement_type: str, period: str, source_line_i
     return "fs_" + hashlib.sha256(material.encode("utf-8")).hexdigest()[:24]
 
 
-def core_mapping_for_field(field: str) -> str | None:
-    for normalized, candidates in CORE_MAPPINGS:
+def core_mapping_for_field(statement_type: str, field: str) -> str | None:
+    for normalized, candidates in CORE_MAPPINGS[statement_type]:
         if field in candidates:
             return normalized
     return None
 
 
-def selected_core_fields(record: dict[str, Any]) -> dict[str, str]:
+def selected_core_fields(statement_type: str, record: dict[str, Any]) -> dict[str, str]:
     selected: dict[str, str] = {}
-    for normalized, candidates in CORE_MAPPINGS:
+    for normalized, candidates in CORE_MAPPINGS[statement_type]:
         for field in candidates:
             if field in record and not is_missing(record[field]):
                 decimal_text(record[field])
@@ -286,28 +349,30 @@ def selected_core_fields(record: dict[str, Any]) -> dict[str, str]:
     return selected
 
 
-def item_basis(field: str, normalized: str, unit: str) -> str:
+def item_basis(statement_type: str, field: str, normalized: str, unit: str) -> str:
     mapping = normalized if normalized != MISSING else "未映射来源项目"
     return (
-        f"资产负债表来源字段 {field}；规范项目 {mapping}；单位 {unit}；"
-        "报告期末时点值；报表范围来源缺失"
+        f"{STATEMENT_LABELS[statement_type]}来源字段 {field}；规范项目 {mapping}；单位 {unit}；"
+        f"{VALUE_SEMANTICS[statement_type]}；报表范围来源缺失"
     )
 
 
-def metadata_from_record(record: dict[str, Any], peer: dict[str, str]) -> dict[str, str]:
+def metadata_from_record(
+    statement_type: str, record: dict[str, Any], peer: dict[str, str]
+) -> dict[str, str]:
     period = date_text(record.get("REPORT_DATE"), "REPORT_DATE")
     return {
         "security_code": peer["code"],
         "security_name": str(record.get("SECURITY_NAME_ABBR") or peer["name"] or MISSING),
         "organization_type": str(record.get("ORG_TYPE") or MISSING),
-        "statement_type": "balance_sheet",
+        "statement_type": statement_type,
         "period": period,
         "report_type": str(record.get("REPORT_TYPE") or MISSING),
         "notice_date": date_text(record.get("NOTICE_DATE"), "NOTICE_DATE"),
         "update_date": date_text(record.get("UPDATE_DATE"), "UPDATE_DATE"),
         "currency": str(record.get("CURRENCY") or MISSING),
         "statement_scope": MISSING,
-        "value_semantics": "point_in_time",
+        "value_semantics": VALUE_SEMANTICS[statement_type],
         "domestic_audit_opinion": str(record.get("OPINION_TYPE") or MISSING),
         "overseas_audit_opinion": str(record.get("OSOPINION_TYPE") or MISSING),
         "source_type": "public_market_data",
@@ -316,29 +381,29 @@ def metadata_from_record(record: dict[str, Any], peer: dict[str, str]) -> dict[s
 
 
 def raw_item_rows(
-    record: dict[str, Any], metadata: dict[str, str]
+    statement_type: str, record: dict[str, Any], metadata: dict[str, str]
 ) -> tuple[list[dict[str, str]], list[str]]:
-    selected = selected_core_fields(record)
+    selected = selected_core_fields(statement_type, record)
     rows: list[dict[str, str]] = []
     schema_messages: list[str] = []
     for field in sorted(record):
         value = record[field]
         if field in METADATA_FIELDS or field.endswith("_YOY") or is_missing(value):
             continue
-        known_amount = field in KNOWN_AMOUNT_FIELDS
+        known_amount = field in KNOWN_FIELDS[statement_type]
         if known_amount:
             try:
                 value_text = decimal_text(value)
             except ValueError:
                 continue
-            unit = "CNY"
+            unit = "CNY/share" if field in PER_SHARE_FIELDS else "CNY"
             verification_status = "verified"
         else:
             value_text = str(value).strip()
             unit = MISSING
             verification_status = "待验证"
-            schema_messages.append(f"资产负债表出现未识别行项目: {field}")
-        normalized = core_mapping_for_field(field) or MISSING
+            schema_messages.append(f"{STATEMENT_LABELS[statement_type]}出现未识别行项目: {field}")
+        normalized = core_mapping_for_field(statement_type, field) or MISSING
         if normalized != MISSING and selected.get(normalized) != field:
             normalized = MISSING
         row = dict(metadata)
@@ -349,7 +414,7 @@ def raw_item_rows(
                 "value": value_text,
                 "unit": unit,
                 "verification_status": verification_status,
-                "basis": item_basis(field, normalized, unit),
+                "basis": item_basis(statement_type, field, normalized, unit),
             }
         )
         row["statement_item_id"] = statement_item_id(
@@ -359,10 +424,12 @@ def raw_item_rows(
     return rows, schema_messages
 
 
-def missing_core_rows(rows: list[dict[str, str]], metadata: dict[str, str]) -> list[dict[str, str]]:
+def missing_core_rows(
+    statement_type: str, rows: list[dict[str, str]], metadata: dict[str, str]
+) -> list[dict[str, str]]:
     present = {row["normalized_line_item"] for row in rows if row["normalized_line_item"] != MISSING}
     placeholders: list[dict[str, str]] = []
-    for normalized, _ in CORE_MAPPINGS:
+    for normalized, _ in CORE_MAPPINGS[statement_type]:
         if normalized in present:
             continue
         source_line_item = f"core:{normalized}"
@@ -374,7 +441,7 @@ def missing_core_rows(rows: list[dict[str, str]], metadata: dict[str, str]) -> l
                 "value": MISSING,
                 "unit": MISSING,
                 "verification_status": MISSING,
-                "basis": "该资产负债表记录中未找到适用来源项目；报表范围来源缺失",
+                "basis": f"该{STATEMENT_LABELS[statement_type]}记录中未找到适用来源项目；报表范围来源缺失",
             }
         )
         row["statement_item_id"] = statement_item_id(
@@ -385,16 +452,15 @@ def missing_core_rows(rows: list[dict[str, str]], metadata: dict[str, str]) -> l
 
 
 def normalize_record(
-    record: dict[str, Any], peer: dict[str, str]
+    statement_type: str, record: dict[str, Any], peer: dict[str, str]
 ) -> tuple[list[dict[str, str]], list[str]]:
-    metadata = metadata_from_record(record, peer)
-    rows, schema_messages = raw_item_rows(record, metadata)
-    return rows + missing_core_rows(rows, metadata), schema_messages
+    metadata = metadata_from_record(statement_type, record, peer)
+    rows, schema_messages = raw_item_rows(statement_type, record, metadata)
+    return rows + missing_core_rows(statement_type, rows, metadata), schema_messages
 
 
-def fixture_record(peer: dict[str, str], period: str, sequence: int) -> dict[str, Any]:
-    amount = 1000 + sequence * 100
-    record: dict[str, Any] = {
+def fixture_metadata(peer: dict[str, str], period: str, sequence: int) -> dict[str, Any]:
+    return {
         "SECUCODE": peer["code"],
         "SECURITY_CODE": peer["code"].split(".", 1)[0],
         "SECURITY_NAME_ABBR": peer["name"],
@@ -408,8 +474,15 @@ def fixture_record(peer: dict[str, str], period: str, sequence: int) -> dict[str
         "UPDATE_DATE": f"{int(period[:4]) + 1}-03-20 00:00:00",
         "CURRENCY": "CNY",
         "OPINION_TYPE": "标准无保留意见",
-        "OSOPINION_TYPE": "来源缺失",
+        "OSOPINION_TYPE": MISSING,
         "LISTING_STATE": "0",
+    }
+
+
+def balance_sheet_fixture_record(peer: dict[str, str], period: str, sequence: int) -> dict[str, Any]:
+    amount = 1000 + sequence * 100
+    record = fixture_metadata(peer, period, sequence)
+    record.update({
         "MONETARYFUNDS": amount + 1,
         "ACCOUNTS_RECE": amount + 2,
         "INVENTORY": amount + 3,
@@ -432,7 +505,7 @@ def fixture_record(peer: dict[str, str], period: str, sequence: int) -> dict[str
         "MINORITY_EQUITY": amount + 20,
         "TOTAL_EQUITY": amount + 21,
         "MONETARYFUNDS_YOY": 8.2,
-    }
+    })
     if peer["code"] == "600519.SH" and period == "2025-12-31":
         record["PARENT_EQUITY_BALANCE"] = amount + 119
     if peer["code"] == "002594.SZ" and period == "2025-12-31":
@@ -440,23 +513,64 @@ def fixture_record(peer: dict[str, str], period: str, sequence: int) -> dict[str
     return record
 
 
-def fixture_records(peer: dict[str, str], scenario: str, sequence: int) -> list[dict[str, Any]]:
+def income_statement_fixture_record(peer: dict[str, str], period: str, sequence: int) -> dict[str, Any]:
+    amount = 2000 + sequence * 100
+    record = fixture_metadata(peer, period, sequence)
+    record.update(
+        {
+            "TOTAL_OPERATE_INCOME": amount + 1,
+            "OPERATE_INCOME": amount + 2,
+            "OPERATE_COST": amount + 3,
+            "SALE_EXPENSE": amount + 4,
+            "MANAGE_EXPENSE": amount + 5,
+            "RESEARCH_EXPENSE": amount + 6,
+            "FINANCE_EXPENSE": amount + 7,
+            "OPERATE_PROFIT": amount + 8,
+            "TOTAL_PROFIT": amount + 9,
+            "INCOME_TAX": amount + 10,
+            "NETPROFIT": amount + 11,
+            "PARENT_NETPROFIT": amount + 12,
+            "MINORITY_INTEREST": amount + 13,
+            "BASIC_EPS": "1.23",
+            "DILUTED_EPS": "1.20",
+            "TOTAL_OPERATE_INCOME_YOY": "8.2",
+        }
+    )
+    if peer["code"] == "002594.SZ" and period == "2025-12-31":
+        record.pop("DILUTED_EPS")
+    return record
+
+
+def fixture_records(
+    statement_type: str, peer: dict[str, str], scenario: str, sequence: int
+) -> list[dict[str, Any]]:
     if scenario == "no-data":
         return []
     records = [
-        fixture_record(peer, "2025-12-31", sequence),
-        fixture_record(peer, "2024-12-31", sequence),
+        (
+            balance_sheet_fixture_record(peer, "2025-12-31", sequence)
+            if statement_type == "balance_sheet"
+            else income_statement_fixture_record(peer, "2025-12-31", sequence)
+        ),
+        (
+            balance_sheet_fixture_record(peer, "2024-12-31", sequence)
+            if statement_type == "balance_sheet"
+            else income_statement_fixture_record(peer, "2024-12-31", sequence)
+        ),
     ]
-    if scenario == "unknown-field":
+    if scenario == "unknown-field" and statement_type == "balance_sheet":
         records[0]["FUTURE_ASSET_ITEM"] = 9876
     return records
 
 
-def fetch_akshare_records(code: str) -> list[dict[str, Any]]:
+def fetch_akshare_records(statement_type: str, code: str) -> list[dict[str, Any]]:
     import akshare as ak  # type: ignore[import-not-found]
 
     symbol, exchange = code.split(".", 1)
-    frame = ak.stock_balance_sheet_by_report_em(symbol=f"{exchange}{symbol}")
+    if statement_type == "balance_sheet":
+        frame = ak.stock_balance_sheet_by_report_em(symbol=f"{exchange}{symbol}")
+    else:
+        frame = ak.stock_profit_sheet_by_report_em(symbol=f"{exchange}{symbol}")
     return list(frame.to_dict("records"))
 
 
@@ -485,8 +599,13 @@ def sort_rows(rows: list[dict[str, str]]) -> list[dict[str, str]]:
         key=lambda row: (
             row["security_code"],
             -int(row["period"].replace("-", "")),
-            CORE_ORDER.get(row["normalized_line_item"], len(CORE_ORDER)),
-            "" if row["normalized_line_item"] in CORE_ORDER else row["source_line_item"],
+            STATEMENT_TYPE_ORDER[row["statement_type"]],
+            CORE_ORDER[row["statement_type"]].get(
+                row["normalized_line_item"], len(CORE_ORDER[row["statement_type"]])
+            ),
+            ""
+            if row["normalized_line_item"] in CORE_ORDER[row["statement_type"]]
+            else row["source_line_item"],
             row["statement_item_id"],
         ),
     )
@@ -512,13 +631,14 @@ def write_manifest(output_dir: Path, as_of: str, period_limit: int) -> None:
             "source_name": SOURCE_NAME,
             "data_time": as_of[:10],
             "period_or_basis": (
-                f"资产负债表；截至 {as_of[:10]} 每证券最多 {period_limit} 个报告期；"
-                "报告期末时点值；金额为人民币元；规范核心科目保留明确来源字段；"
+                f"资产负债表和利润表；截至 {as_of[:10]} 每证券每表最多 {period_limit} 个报告期；"
+                "资产负债表为报告期末时点值，利润表为年初至报告期末累计值；"
+                "金额为人民币元、每股收益为人民币元/股；规范核心科目保留明确来源字段；"
                 "statement_scope 为来源缺失"
             ),
             "verification_status": "verified",
             "missing_behavior": (
-                "无数据写 financial_statement_balance_sheet_no_data；输入或请求失败写对应 "
+                "无数据写对应 financial_statement_*_no_data；输入或请求失败写对应 "
                 "financial_statement 阶段；来源未声明报表范围时为来源缺失，不得据此执行跨公司比较"
             ),
         }
@@ -583,34 +703,36 @@ def run_pipeline(args: argparse.Namespace) -> int:
                 )
             )
             continue
-        try:
-            records = (
-                fixture_records(peer, args.fixture_scenario, sequence)
-                if args.source == "fixture"
-                else fetch_akshare_records(peer["code"])
-            )
-            selected = select_records(records, as_of, period_limit)
-            if not selected:
-                errors.append(
-                    error_row(
-                        peer["code"],
-                        "financial_statement_balance_sheet_no_data",
-                        f"截至 {as_of.isoformat()} 未返回可用资产负债表",
+        for statement_type in ("balance_sheet", "income_statement"):
+            label = STATEMENT_LABELS[statement_type]
+            try:
+                records = (
+                    fixture_records(statement_type, peer, args.fixture_scenario, sequence)
+                    if args.source == "fixture"
+                    else fetch_akshare_records(statement_type, peer["code"])
+                )
+                selected = select_records(records, as_of, period_limit)
+                if not selected:
+                    errors.append(
+                        error_row(
+                            peer["code"],
+                            f"financial_statement_{statement_type}_no_data",
+                            f"截至 {as_of.isoformat()} 未返回可用{label}",
+                        )
                     )
-                )
-                continue
-            for record in selected:
-                normalized_rows, schema_messages = normalize_record(record, peer)
-                rows.extend(normalized_rows)
-                errors.extend(
-                    error_row(peer["code"], "financial_statement_schema", message)
-                    for message in schema_messages
-                )
-        except Exception as exc:
-            errors.append(error_row(peer["code"], "financial_statement_balance_sheet", str(exc)))
+                    continue
+                for record in selected:
+                    normalized_rows, schema_messages = normalize_record(statement_type, record, peer)
+                    rows.extend(normalized_rows)
+                    errors.extend(
+                        error_row(peer["code"], "financial_statement_schema", message)
+                        for message in schema_messages
+                    )
+            except Exception as exc:
+                errors.append(error_row(peer["code"], f"financial_statement_{statement_type}", str(exc)))
 
     write_outputs(output_dir, rows, errors, args.as_of, period_limit)
-    print(f"已写入资产负债表明细: {output_dir}")
+    print(f"已写入资产负债表和利润表明细: {output_dir}")
     if errors:
         print(f"财务报表明细完成，含 {len(errors)} 条提示", file=sys.stderr)
     return 0
