@@ -117,6 +117,18 @@ def write_invalid_peers(path: Path) -> None:
         writer.writerow({"code": "not-a-security", "name": "坏样本"})
 
 
+def write_mixed_peers(path: Path) -> None:
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=["code", "name"])
+        writer.writeheader()
+        writer.writerows(
+            [
+                {"code": "not-a-security", "name": "坏样本"},
+                {"code": "600519.SH", "name": "贵州茅台"},
+            ]
+        )
+
+
 def write_single_peer(path: Path, code: str, name: str) -> None:
     with path.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=["code", "name"])
@@ -400,9 +412,16 @@ def validate_success(errors: list[str]) -> None:
             errors.append("成功场景不应产生抓取错误")
 
         first_bytes = statements_path.read_bytes()
+        first_manifest = manifest_path.read_bytes()
+        first_errors = errors_path.read_bytes()
         second = run_fetcher(root, peers)
-        if second.returncode != 0 or statements_path.read_bytes() != first_bytes:
-            errors.append("相同 fixture 重跑必须生成字节稳定的三表财务报表 CSV")
+        if (
+            second.returncode != 0
+            or statements_path.read_bytes() != first_bytes
+            or manifest_path.read_bytes() != first_manifest
+            or errors_path.read_bytes() != first_errors
+        ):
+            errors.append("相同 fixture 重跑必须生成字节稳定的财务报表、来源条目和错误记录")
 
 
 def validate_shared_period_window(errors: list[str]) -> None:
@@ -619,6 +638,162 @@ def validate_cash_flow_no_data(errors: list[str]) -> None:
             errors.append("现金流量表无数据不得使用 statement_type 拼接的错误阶段")
 
 
+def validate_visibility_and_degradation(errors: list[str]) -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        peers = root / "peers.csv"
+        write_peers(peers)
+        future = run_fetcher(root, peers, "--fixture-scenario", "future-announcement")
+        if future.returncode != 0:
+            errors.append(f"未来公告场景退出码为 {future.returncode}: {future.stderr}")
+        future_rows = read_rows(root / "output" / "financial_statements.csv")
+        future_stages = {row["stage"] for row in read_rows(root / "output" / "fetch_errors.csv")}
+        if future_rows or not {
+            "financial_statement_balance_sheet_no_data",
+            "financial_statement_income_statement_no_data",
+            "financial_statement_cash_flow_no_data",
+        }.issubset(future_stages):
+            errors.append("未来公告记录不得进入事实表，且必须按真实无数据降级")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        peers = root / "peers.csv"
+        write_peers(peers)
+        historical = run_fetcher(root, peers, "--fixture-scenario", "updated-after-asof")
+        historical_stages = {row["stage"] for row in read_rows(root / "output" / "fetch_errors.csv")}
+        if historical.returncode != 0:
+            errors.append(f"历史版本不可恢复场景退出码为 {historical.returncode}: {historical.stderr}")
+        if "financial_statement_historical_version_unavailable" not in historical_stages:
+            errors.append("截止日后更新的记录必须写 historical_version_unavailable")
+        if any(stage.endswith("_no_data") for stage in historical_stages):
+            errors.append("历史版本不可恢复不得误报为真实无数据")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        peers = root / "peers.csv"
+        write_peers(peers)
+        malformed = run_fetcher(root, peers, "--fixture-scenario", "invalid-dates")
+        malformed_stages = {row["stage"] for row in read_rows(root / "output" / "fetch_errors.csv")}
+        if malformed.returncode != 0:
+            errors.append(f"非法日期场景退出码为 {malformed.returncode}: {malformed.stderr}")
+        if "financial_statement_schema" not in malformed_stages:
+            errors.append("公告日或更新日非法必须写 financial_statement_schema")
+        if any(stage.endswith("_no_data") for stage in malformed_stages):
+            errors.append("日期结构异常不得误报为真实无数据")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        peers = root / "peers.csv"
+        write_peers(peers)
+        reversed_dates = run_fetcher(root, peers, "--fixture-scenario", "update-before-notice")
+        reversed_stages = {row["stage"] for row in read_rows(root / "output" / "fetch_errors.csv")}
+        if reversed_dates.returncode != 0:
+            errors.append(f"更新时间早于公告日场景退出码为 {reversed_dates.returncode}: {reversed_dates.stderr}")
+        if "financial_statement_schema" not in reversed_stages or any(stage.endswith("_no_data") for stage in reversed_stages):
+            errors.append("更新时间早于公告日必须作为 schema 异常而非真实无数据")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        peers = root / "peers.csv"
+        write_peers(peers)
+        future_period = run_fetcher(root, peers, "--fixture-scenario", "future-report-period", period_limit="1")
+        future_period_rows = read_rows(root / "output" / "financial_statements.csv")
+        if future_period.returncode != 0:
+            errors.append(f"未来报告期场景退出码为 {future_period.returncode}: {future_period.stderr}")
+        if any(row["period"] > "2026-08-16" for row in future_period_rows):
+            errors.append("报告日晚于研究截止日的记录不得进入候选或共享窗口")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        peers = root / "peers.csv"
+        write_peers(peers)
+        duplicate = run_fetcher(root, peers, "--fixture-scenario", "duplicate-candidates", period_limit="1")
+        if duplicate.returncode != 0:
+            errors.append(f"重复候选场景退出码为 {duplicate.returncode}: {duplicate.stderr}")
+        duplicate_rows = read_rows(root / "output" / "financial_statements.csv")
+        selected = [
+            row
+            for row in duplicate_rows
+            if row["security_code"] == "600519.SH"
+            and row["statement_type"] == "balance_sheet"
+            and row["source_line_item"] == "MONETARYFUNDS"
+        ]
+        if len(selected) != 1 or selected[0]["value"] != "9999":
+            errors.append("同期间多个可见候选必须选择截止日前更新时间最新的记录")
+        duplicate_bytes = (root / "output" / "financial_statements.csv").read_bytes()
+        reversed_result = run_fetcher(root, peers, "--fixture-scenario", "duplicate-candidates-reversed", period_limit="1")
+        if reversed_result.returncode != 0 or (root / "output" / "financial_statements.csv").read_bytes() != duplicate_bytes:
+            errors.append("完全重复候选的输出不得受来源返回顺序影响")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        peers = root / "peers.csv"
+        write_peers(peers)
+        partial = run_fetcher(root, peers, "--fixture-scenario", "statement-failure", period_limit="1")
+        partial_rows = read_rows(root / "output" / "financial_statements.csv")
+        partial_stages = {row["stage"] for row in read_rows(root / "output" / "fetch_errors.csv")}
+        if partial.returncode != 0:
+            errors.append(f"单表失败场景退出码为 {partial.returncode}: {partial.stderr}")
+        if (
+            "financial_statement_cash_flow" not in partial_stages
+            or {row["statement_type"] for row in partial_rows if row["security_code"] == "600519.SH"}
+            != {"balance_sheet", "income_statement"}
+        ):
+            errors.append("单张表失败必须保留同证券其他两表，并记录对应失败阶段")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        peers = root / "peers.csv"
+        write_peers(peers)
+        failed = run_fetcher(root, peers, "--fixture-scenario", "all-failed")
+        output = root / "output"
+        if failed.returncode == 0:
+            errors.append("全部受支持三表请求失败时命令必须返回非零")
+        if not (output / "financial_statements.csv").is_file() or not (output / "source_manifest.json").is_file() or not (output / "fetch_errors.csv").is_file():
+            errors.append("全部请求失败仍必须写稳定产物")
+
+
+def validate_preservation_and_partial_input(errors: list[str]) -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        peers = root / "mixed.csv"
+        write_mixed_peers(peers)
+        result = run_fetcher(root, peers, period_limit="1")
+        rows = read_rows(root / "output" / "financial_statements.csv")
+        stages = {row["stage"] for row in read_rows(root / "output" / "fetch_errors.csv")}
+        if result.returncode != 0 or {row["security_code"] for row in rows} != {"600519.SH"} or "financial_statement_input" not in stages:
+            errors.append("部分非法代码必须保留有效证券结果并记录输入错误")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        peers = root / "peers.csv"
+        write_peers(peers)
+        output = root / "output"
+        output.mkdir()
+        (output / "source_manifest.json").write_text(
+            json.dumps({"files": [{"file": "other.csv"}, {"file": "financial_statements.csv", "old": True}]}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        with (output / "fetch_errors.csv").open("w", newline="", encoding="utf-8") as handle:
+            writer = csv.DictWriter(handle, fieldnames=["code", "source", "stage", "error"])
+            writer.writeheader()
+            writer.writerows(
+                [
+                    {"code": "x", "source": "other", "stage": "other_stage", "error": "保留"},
+                    {"code": "x", "source": "financial_statement", "stage": "financial_statement_old", "error": "替换"},
+                ]
+            )
+        result = run_fetcher(root, peers, period_limit="1")
+        manifest = json.loads((output / "source_manifest.json").read_text(encoding="utf-8"))
+        remaining_errors = read_rows(output / "fetch_errors.csv")
+        if result.returncode != 0:
+            errors.append(f"错误保留场景退出码为 {result.returncode}: {result.stderr}")
+        if len([item for item in manifest["files"] if item.get("file") == "financial_statements.csv"]) != 1 or not any(item.get("file") == "other.csv" for item in manifest["files"]):
+            errors.append("重跑必须只替换财务报表来源条目并保留其他来源条目")
+        if len(remaining_errors) != 1 or remaining_errors[0]["stage"] != "other_stage":
+            errors.append("重跑必须清除旧财务报表错误并保留其他阶段错误")
+
+
 def validate_bj_unsupported(errors: list[str]) -> None:
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
@@ -643,6 +818,8 @@ def main() -> int:
     validate_unknown_field(errors)
     validate_income_statement_degradations(errors)
     validate_cash_flow_no_data(errors)
+    validate_visibility_and_degradation(errors)
+    validate_preservation_and_partial_input(errors)
     validate_bj_unsupported(errors)
     if errors:
         print(f"FAIL — {len(errors)} A 股财务报表明细问题:", file=sys.stderr)

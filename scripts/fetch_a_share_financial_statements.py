@@ -303,6 +303,15 @@ def parse_args() -> argparse.Namespace:
             "non-annual",
             "invalid-income-value",
             "window-gap",
+            "future-announcement",
+            "updated-after-asof",
+            "invalid-dates",
+            "duplicate-candidates",
+            "duplicate-candidates-reversed",
+            "statement-failure",
+            "all-failed",
+            "update-before-notice",
+            "future-report-period",
         ],
         default="success",
         help="fixture 离线场景。",
@@ -682,6 +691,12 @@ FIXTURE_PERIODS = (
 def fixture_records(
     statement_type: str, peer: dict[str, str], scenario: str, sequence: int
 ) -> list[dict[str, Any]]:
+    if scenario == "all-failed" or (
+        scenario == "statement-failure"
+        and peer["code"] == "600519.SH"
+        and statement_type == "cash_flow_statement"
+    ):
+        raise ValueError("fixture 模拟来源请求失败")
     if scenario == "no-data":
         return []
     builders = {
@@ -699,6 +714,35 @@ def fixture_records(
         records[0]["BASIC_EPS"] = "not-a-number"
     if scenario == "window-gap" and statement_type == "income_statement":
         records = [record for record in records if record["REPORT_DATE"][:10] != "2025-09-30"]
+    if scenario == "future-announcement":
+        for record in records:
+            record["NOTICE_DATE"] = "2026-08-17 00:00:00"
+            record["UPDATE_DATE"] = "2026-08-17 00:00:00"
+    if scenario == "updated-after-asof":
+        for record in records:
+            record["NOTICE_DATE"] = "2026-08-15 00:00:00"
+            record["UPDATE_DATE"] = "2026-08-17 00:00:00"
+    if scenario == "invalid-dates":
+        for record in records:
+            record["NOTICE_DATE"] = "invalid-date"
+    if scenario == "update-before-notice":
+        for record in records:
+            record["NOTICE_DATE"] = "2026-08-16 00:00:00"
+            record["UPDATE_DATE"] = "2026-08-15 00:00:00"
+    if scenario == "future-report-period":
+        for record in records:
+            record["REPORT_DATE"] = "2026-12-31 00:00:00"
+            record["REPORT_TYPE"] = "年报"
+            record["NOTICE_DATE"] = "2026-08-16 00:00:00"
+            record["UPDATE_DATE"] = "2026-08-16 00:00:00"
+    if scenario in {"duplicate-candidates", "duplicate-candidates-reversed"}:
+        duplicate = dict(records[0])
+        duplicate["UPDATE_DATE"] = "2026-08-16 00:00:00"
+        if statement_type == "balance_sheet":
+            duplicate["MONETARYFUNDS"] = 9999
+        records.append(duplicate)
+        if scenario == "duplicate-candidates-reversed":
+            records.reverse()
     return records
 
 
@@ -715,15 +759,50 @@ def fetch_akshare_records(statement_type: str, code: str) -> list[dict[str, Any]
     return list(frame.to_dict("records"))
 
 
-def records_by_period(records: list[dict[str, Any]], as_of: dt.date) -> dict[dt.date, dict[str, Any]]:
-    eligible: dict[dt.date, dict[str, Any]] = {}
+def records_by_period(
+    records: list[dict[str, Any]], as_of: dt.date
+) -> tuple[dict[dt.date, dict[str, Any]], list[tuple[str, str]], bool]:
+    candidates: dict[dt.date, list[tuple[dt.date, str, dict[str, Any]]]] = {}
+    errors: list[tuple[str, str]] = []
+    rejected_for_integrity = False
     for record in records:
         if str(record.get("REPORT_TYPE") or MISSING) not in REGULAR_REPORT_TYPES:
             continue
-        period = parse_date(record.get("REPORT_DATE"), "REPORT_DATE")
-        if period <= as_of and period not in eligible:
-            eligible[period] = record
-    return eligible
+        try:
+            period = parse_date(record.get("REPORT_DATE"), "REPORT_DATE")
+            notice_date = parse_date(record.get("NOTICE_DATE"), "NOTICE_DATE")
+            update_date = parse_date(record.get("UPDATE_DATE"), "UPDATE_DATE")
+        except ValueError as exc:
+            errors.append(("financial_statement_schema", str(exc)))
+            rejected_for_integrity = True
+            continue
+        if update_date < notice_date:
+            errors.append(
+                (
+                    "financial_statement_schema",
+                    f"财务报表 UPDATE_DATE 早于 NOTICE_DATE: {update_date.isoformat()} < {notice_date.isoformat()}",
+                )
+            )
+            rejected_for_integrity = True
+            continue
+        if period > as_of or notice_date > as_of:
+            continue
+        if update_date > as_of:
+            errors.append(
+                (
+                    "financial_statement_historical_version_unavailable",
+                    f"报告期 {period.isoformat()} 在研究截止日后更新，无法恢复历史版本",
+                )
+            )
+            rejected_for_integrity = True
+            continue
+        signature = json.dumps(record, ensure_ascii=False, sort_keys=True, default=str)
+        candidates.setdefault(period, []).append((update_date, signature, record))
+    selected = {
+        period: max(items, key=lambda item: (item[0], item[1]))[2]
+        for period, items in candidates.items()
+    }
+    return selected, errors, rejected_for_integrity
 
 
 def shared_period_window(
@@ -778,13 +857,17 @@ def write_manifest(output_dir: Path, as_of: str, period_limit: int) -> None:
                 f"资产负债表、利润表和现金流量表；截至 {as_of[:10]} 每证券共享最多 {period_limit} 个报告期；"
                 "资产负债表为报告期末时点值，利润表和现金流量表为年初至报告期末累计值；"
                 "三表共享公司级报告期窗口，窗口内缺期不以更早期间补位；"
+                "仅使用公告日和更新时间均不晚于研究截止日的当前可见版本；"
                 "金额为人民币元、每股收益为人民币元/股；规范核心科目保留明确来源字段；"
                 "statement_scope 为来源缺失"
             ),
             "verification_status": "verified",
             "missing_behavior": (
-                "整表或共享窗口内缺期写对应 financial_statement_*_no_data；输入或请求失败写对应 "
-                "financial_statement 阶段；来源未声明报表范围时为来源缺失，不得据此执行跨公司比较"
+                "整表或共享窗口内缺期写对应 financial_statement_*_no_data；截止日后更新写 "
+                "financial_statement_historical_version_unavailable；日期或字段异常写 "
+                "financial_statement_schema；北交所写 financial_statement_unsupported；"
+                "输入或请求失败写对应 financial_statement 阶段；来源未声明报表范围时为来源缺失，"
+                "不得据此执行跨公司比较"
             ),
         }
     )
@@ -820,6 +903,8 @@ def run_pipeline(args: argparse.Namespace) -> int:
     output_dir = Path(args.output_dir)
     rows: list[dict[str, str]] = []
     errors: list[dict[str, str]] = []
+    supported_requests = 0
+    normal_responses = 0
     try:
         try:
             period_limit = int(args.period_limit)
@@ -849,15 +934,26 @@ def run_pipeline(args: argparse.Namespace) -> int:
             )
             continue
         peer_records: dict[str, dict[dt.date, dict[str, Any]]] = {}
+        integrity_rejections: set[str] = set()
         for statement_type in STATEMENT_TYPES:
-            label = STATEMENT_LABELS[statement_type]
+            supported_requests += 1
             try:
                 records = (
                     fixture_records(statement_type, peer, args.fixture_scenario, sequence)
                     if args.source == "fixture"
                     else fetch_akshare_records(statement_type, peer["code"])
                 )
-                peer_records[statement_type] = records_by_period(records, as_of)
+                if not isinstance(records, list):
+                    raise ValueError("来源响应不是记录列表")
+                normal_responses += 1
+                selected, visibility_errors, rejected_for_integrity = records_by_period(records, as_of)
+                peer_records[statement_type] = selected
+                errors.extend(
+                    error_row(peer["code"], stage, message)
+                    for stage, message in visibility_errors
+                )
+                if rejected_for_integrity:
+                    integrity_rejections.add(statement_type)
             except Exception as exc:
                 errors.append(error_row(peer["code"], ERROR_STAGE_PREFIXES[statement_type], str(exc)))
 
@@ -867,7 +963,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
             if records is None:
                 continue
             label = STATEMENT_LABELS[statement_type]
-            if not records:
+            if not records and statement_type not in integrity_rejections:
                 errors.append(
                     error_row(
                         peer["code"],
@@ -875,6 +971,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
                         f"截至 {as_of.isoformat()} 未返回可用{label}",
                     )
                 )
+            if not records:
                 continue
             missing_periods = [period.isoformat() for period in window if period not in records]
             if missing_periods:
@@ -900,7 +997,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
     print(f"已写入资产负债表、利润表和现金流量表明细: {output_dir}")
     if errors:
         print(f"财务报表明细完成，含 {len(errors)} 条提示", file=sys.stderr)
-    return 0
+    return 1 if supported_requests and normal_responses == 0 else 0
 
 
 def main() -> int:
