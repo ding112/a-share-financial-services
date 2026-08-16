@@ -148,6 +148,7 @@ ERROR_STAGE_PREFIXES = {
     "cash_flow_statement": "financial_statement_cash_flow",
 }
 REGULAR_REPORT_TYPES = frozenset({"一季报", "中报", "三季报", "年报"})
+NON_STATEMENT_REPORT_TYPES = frozenset({"业绩预告", "业绩快报"})
 
 # 当前 AkShare 资产负债表接口公开的金额字段目录。目录是刻意显式维护的：
 # 不能因为未知字段的名称或数值看起来像金额就自行猜测其单位。
@@ -312,6 +313,8 @@ def parse_args() -> argparse.Namespace:
             "all-failed",
             "update-before-notice",
             "future-report-period",
+            "invalid-period-date",
+            "invalid-report-type",
         ],
         default="success",
         help="fixture 离线场景。",
@@ -735,6 +738,14 @@ def fixture_records(
             record["REPORT_TYPE"] = "年报"
             record["NOTICE_DATE"] = "2026-08-16 00:00:00"
             record["UPDATE_DATE"] = "2026-08-16 00:00:00"
+    if scenario == "invalid-period-date" and statement_type == "income_statement":
+        for record in records:
+            if record["REPORT_DATE"][:10] == "2025-09-30":
+                record["NOTICE_DATE"] = "invalid-date"
+    if scenario == "invalid-report-type" and statement_type == "income_statement":
+        for record in records:
+            if record["REPORT_DATE"][:10] == "2025-09-30":
+                record["REPORT_TYPE"] = MISSING
     if scenario in {"duplicate-candidates", "duplicate-candidates-reversed"}:
         duplicate = dict(records[0])
         duplicate["UPDATE_DATE"] = "2026-08-16 00:00:00"
@@ -761,20 +772,31 @@ def fetch_akshare_records(statement_type: str, code: str) -> list[dict[str, Any]
 
 def records_by_period(
     records: list[dict[str, Any]], as_of: dt.date
-) -> tuple[dict[dt.date, dict[str, Any]], list[tuple[str, str]], bool]:
+) -> tuple[dict[dt.date, dict[str, Any]], list[tuple[str, str]], set[dt.date], bool]:
     candidates: dict[dt.date, list[tuple[dt.date, str, dict[str, Any]]]] = {}
     errors: list[tuple[str, str]] = []
-    rejected_for_integrity = False
+    rejected_periods: set[dt.date] = set()
+    unknown_rejected_period = False
     for record in records:
-        if str(record.get("REPORT_TYPE") or MISSING) not in REGULAR_REPORT_TYPES:
-            continue
         try:
             period = parse_date(record.get("REPORT_DATE"), "REPORT_DATE")
+        except ValueError as exc:
+            errors.append(("financial_statement_schema", str(exc)))
+            unknown_rejected_period = True
+            continue
+        report_type = str(record.get("REPORT_TYPE") or MISSING)
+        if report_type not in REGULAR_REPORT_TYPES:
+            if report_type in NON_STATEMENT_REPORT_TYPES:
+                continue
+            errors.append(("financial_statement_schema", f"财务报表 REPORT_TYPE 无法识别: {report_type}"))
+            rejected_periods.add(period)
+            continue
+        try:
             notice_date = parse_date(record.get("NOTICE_DATE"), "NOTICE_DATE")
             update_date = parse_date(record.get("UPDATE_DATE"), "UPDATE_DATE")
         except ValueError as exc:
             errors.append(("financial_statement_schema", str(exc)))
-            rejected_for_integrity = True
+            rejected_periods.add(period)
             continue
         if update_date < notice_date:
             errors.append(
@@ -783,7 +805,7 @@ def records_by_period(
                     f"财务报表 UPDATE_DATE 早于 NOTICE_DATE: {update_date.isoformat()} < {notice_date.isoformat()}",
                 )
             )
-            rejected_for_integrity = True
+            rejected_periods.add(period)
             continue
         if period > as_of or notice_date > as_of:
             continue
@@ -794,7 +816,7 @@ def records_by_period(
                     f"报告期 {period.isoformat()} 在研究截止日后更新，无法恢复历史版本",
                 )
             )
-            rejected_for_integrity = True
+            rejected_periods.add(period)
             continue
         signature = json.dumps(record, ensure_ascii=False, sort_keys=True, default=str)
         candidates.setdefault(period, []).append((update_date, signature, record))
@@ -802,7 +824,7 @@ def records_by_period(
         period: max(items, key=lambda item: (item[0], item[1]))[2]
         for period, items in candidates.items()
     }
-    return selected, errors, rejected_for_integrity
+    return selected, errors, rejected_periods, unknown_rejected_period
 
 
 def shared_period_window(
@@ -934,7 +956,8 @@ def run_pipeline(args: argparse.Namespace) -> int:
             )
             continue
         peer_records: dict[str, dict[dt.date, dict[str, Any]]] = {}
-        integrity_rejections: set[str] = set()
+        rejected_periods_by_statement: dict[str, set[dt.date]] = {}
+        unknown_rejections: set[str] = set()
         for statement_type in STATEMENT_TYPES:
             supported_requests += 1
             try:
@@ -946,14 +969,17 @@ def run_pipeline(args: argparse.Namespace) -> int:
                 if not isinstance(records, list):
                     raise ValueError("来源响应不是记录列表")
                 normal_responses += 1
-                selected, visibility_errors, rejected_for_integrity = records_by_period(records, as_of)
+                selected, visibility_errors, rejected_periods, unknown_rejected_period = records_by_period(
+                    records, as_of
+                )
                 peer_records[statement_type] = selected
+                rejected_periods_by_statement[statement_type] = rejected_periods
                 errors.extend(
                     error_row(peer["code"], stage, message)
                     for stage, message in visibility_errors
                 )
-                if rejected_for_integrity:
-                    integrity_rejections.add(statement_type)
+                if unknown_rejected_period:
+                    unknown_rejections.add(statement_type)
             except Exception as exc:
                 errors.append(error_row(peer["code"], ERROR_STAGE_PREFIXES[statement_type], str(exc)))
 
@@ -963,7 +989,8 @@ def run_pipeline(args: argparse.Namespace) -> int:
             if records is None:
                 continue
             label = STATEMENT_LABELS[statement_type]
-            if not records and statement_type not in integrity_rejections:
+            rejected_periods = rejected_periods_by_statement.get(statement_type, set())
+            if not records and not rejected_periods and statement_type not in unknown_rejections:
                 errors.append(
                     error_row(
                         peer["code"],
@@ -973,7 +1000,11 @@ def run_pipeline(args: argparse.Namespace) -> int:
                 )
             if not records:
                 continue
-            missing_periods = [period.isoformat() for period in window if period not in records]
+            missing_periods = [
+                period.isoformat()
+                for period in window
+                if period not in records and period not in rejected_periods and statement_type not in unknown_rejections
+            ]
             if missing_periods:
                 errors.append(
                     error_row(

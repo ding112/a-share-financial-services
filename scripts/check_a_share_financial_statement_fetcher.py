@@ -681,6 +681,21 @@ def validate_visibility_and_degradation(errors: list[str]) -> None:
         if any(stage.endswith("_no_data") for stage in malformed_stages):
             errors.append("日期结构异常不得误报为真实无数据")
 
+    for scenario, description in [
+        ("invalid-period-date", "窗口内单期间日期异常"),
+        ("invalid-report-type", "窗口内单期间报告类型异常"),
+    ]:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            peers = root / "peers.csv"
+            write_peers(peers)
+            result = run_fetcher(root, peers, "--fixture-scenario", scenario, period_limit="2")
+            stages = {row["stage"] for row in read_rows(root / "output" / "fetch_errors.csv")}
+            if result.returncode != 0:
+                errors.append(f"{description}场景退出码为 {result.returncode}: {result.stderr}")
+            if "financial_statement_schema" not in stages or any(stage.endswith("_no_data") for stage in stages):
+                errors.append(f"{description}必须写 schema 且不得误报为窗口内真实无数据")
+
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         peers = root / "peers.csv"
