@@ -180,6 +180,7 @@ data-prep worker 使用的一键准备入口。它负责在 `research-pack/` 缺
 | `peer_universe.csv` | 保存进入 comps 的 8 到 15 只公司；自动生成时 `theme_role` 默认为 `待验证`。 |
 | `market_snapshot.csv` | 由公开行情来源生成的行情、估值、市值、流动性、量比、振幅和短期表现快照（含 60/120 日收益率）。 |
 | `financial_summary.csv` | 由 Eastmoney 或 AkShare 公开财务摘要生成的最新一期报告期财务字段。 |
+| `financial_statements.csv` | 由独立财务报表明细入口生成的三表多报告期长表；默认执行，可用 `--financial-statement-source`、`--financial-statement-period-limit`、`--financial-statement-fixture-scenario` 调整，或用 `--skip-financial-statements` 跳过。 |
 | `events_and_risks.md` | 由 AkShare 事件类接口生成的 ST、停复牌、限售解禁和质押风险数据。 |
 | `market_context_fund_flow.csv` | 行业资金流排名和主力净流入数据。 |
 | `market_context_board_changes.csv` | 板块异动和领涨股数据。 |
@@ -219,7 +220,16 @@ fixture。来源完全失败时一键准备只告警并继续核心数据包，�
 互动平台问答阶段同样默认执行，可以用 `--skip-investor-interactions` 跳过。
 普通股票池按交易所读取深交所互动易或上证e互动，fixture 股票池默认使用离线
 fixture；来源完全失败时只告警并继续核心数据包。跳过阶段时必须同时移除旧的
-`investor_interactions.csv`、来源清单条目和对应错误记录。
+ `investor_interactions.csv`、来源清单条目和对应错误记录。
+
+财务报表明细阶段默认执行，普通股票池解析为 `akshare`，fixture 股票池解析为
+`fixture`；显式 `--financial-statement-source` 优先，报告期数量默认 12 且必须
+为正整数。它是补充阶段，不改变核心研究包完成条件；独立入口非零时一键准备只在
+标准错误输出阶段入口和退出码警告，仍保留固定表头 CSV、来源条目和错误记录。
+`--skip-financial-statements` 不运行该阶段；与 `--force` 一起使用时清理旧的
+`financial_statements.csv`、对应来源条目和所有 `financial_statement*` 错误，其他
+文件和阶段错误保留。自动准备清单记录解析后的来源、期间数量、fixture 场景和
+`completed`、`failed` 或 `skipped` 状态。
 
 ## 字段来源契约
 
@@ -283,6 +293,7 @@ fixture；来源完全失败时只告警并继续核心数据包。跳过阶段�
 | `peer_universe.csv` | 必需 | 定义 8 到 15 只候选公司、交易所、主题暴露和 peer 分组 | 不能执行 comps 或 idea shortlist，只能要求补股票池 |
 | `market_snapshot.csv` | 可选 | 提供行情、估值、市值、流动性、量比、振幅和前复权短期表现快照（含 60/120 日收益率） | 行情、估值、流动性和短期表现字段写 `来源缺失`，不得按最新表现排序 |
 | `financial_summary.csv` | 可选 | 提供报告期财务摘要、盈利质量和资产负债字段 | 财务和质量字段写 `来源缺失` 或 `口径不可比` |
+| `financial_statements.csv` | 可选 | 提供资产负债表、利润表和现金流量表的多报告期长表明细 | 缺失时不从财务摘要倒推；跨公司或统一口径计算写 `口径不可比` 或 `来源缺失` |
 | `company_exposure.md` | 可选 | 保存公司业务暴露、订单、产能、客户和产品证据摘录 | 主题暴露只能进入 `待验证`，不得作为核心 idea 入选依据 |
 | `events_and_risks.md` | 可选 | 保存催化、监管、减持、解禁、ST、停复牌和失效条件 | 风险字段写 `来源缺失`，不得弱化风险语言 |
 | `market_context_fund_flow.csv` | 可选 | 行业资金流排名、主力净流入、大单资金流向 | 只用于市场语境，不作为基本面证据 |
@@ -402,6 +413,44 @@ fixture；来源完全失败时只告警并继续核心数据包。跳过阶段�
 | `asset_liability_ratio` | 资产负债率 |
 | `operating_cash_flow` | 经营现金流 |
 | `basis` | 合并、母公司、年度、季度或用户提供口径 |
+
+### `financial_statements.csv`
+
+`financial_statements.csv` 是独立的可选财务报表明细长表，不是
+`financial_summary.csv` 的扩展，也不得用摘要字段倒推三张报表。每行表示一个
+证券、报告期、报表类型和来源行项目；文件缺失时保留财务摘要的原有语义，不能
+假定多报告期明细存在。
+
+固定列顺序为：
+
+```text
+statement_item_id,security_code,security_name,organization_type,statement_type,period,report_type,notice_date,update_date,currency,statement_scope,source_line_item,normalized_line_item,value,unit,value_semantics,domestic_audit_opinion,overseas_audit_opinion,source_type,source_name,verification_status,basis
+```
+
+三表来自 AkShare（东方财富财务报表）公开市场数据接口，第一版只覆盖沪深 A
+股；北交所必须写 `financial_statement_unsupported`，不得以单表覆盖冒充三表。
+公告日和更新时间均不得晚于 `as-of`，公告日晚于截止日的记录不可见；截止日后
+更新但无法恢复历史版本的记录写 `financial_statement_historical_version_unavailable`。
+窗口在可见性筛选后按公司选择最多 12 个不同报告期，三表共享该窗口，窗口内缺期
+写对应 `financial_statement_*_no_data`。
+
+错误阶段固定为 `financial_statement_balance_sheet`、
+`financial_statement_income_statement`、`financial_statement_cash_flow` 及其
+对应的 `_no_data`；输入错误使用 `financial_statement_input`，请求/解析失败仍
+保留原阶段和错误记录，不能把失败伪装成未运行。
+
+资产负债表的 `value_semantics` 为 `point_in_time`；利润表和现金流量表为
+`year_to_date`。金额单位是人民币元，每股收益是人民币元/股；来源未声明的
+`statement_scope` 固定为 `来源缺失`，不能按公司类型或字段集合猜测合并/母公司。
+已定位、可见且单位明确的来源行标为 `verified`；这里的 `verified` 只表示来源
+行已定位、解析和映射，不代表 `official_disclosure`、法定完整财报或已确认合并
+口径。未知字段或单位仍保留原字段和值，标为 `待验证` 并写
+`financial_statement_schema`；核心缺失占位使用 `来源缺失`，不伪造整表。
+
+下游可在同公司、同来源且期间语义一致时使用规范核心科目观察趋势；
+`statement_scope=来源缺失` 时，跨公司比较和需要统一报表范围的 EV、EV/Revenue、
+EV/EBITDA、自由现金流等计算必须写 `口径不可比` 或 `来源缺失`，不得把未知范围
+当作可比范围。该阶段不生成单季度、TTM 或其他派生值。
 
 ### `annual_reports.csv`
 

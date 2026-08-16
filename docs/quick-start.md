@@ -102,7 +102,7 @@ a-share-market-researcher:a-share-market-researcher(
   Primer: A股机器人产业链, angle: 减速器供给缺口。
   使用 ./research-pack/机器人产业链/ 作为输入数据包。
   先解析 source_manifest.json 和 peer_universe.csv；如果存在
-  market_snapshot.csv、financial_summary.csv、company_exposure.md 或
+  market_snapshot.csv、financial_summary.csv、financial_statements.csv、company_exposure.md 或
   events_and_risks.md、investor_interactions.csv，也一并读取。请先列出数据包字段来源、数据时间、
   报告期或口径、验证状态和缺失行为，再生成结果到
   ./out/机器人产业链行业研究.md
@@ -114,6 +114,35 @@ a-share-market-researcher:a-share-market-researcher(
 - 输出先说明 `source_manifest.json` 和 `peer_universe.csv` 是否存在。
 - 缺少可选文件时，对应字段写 `来源缺失`、`待验证` 或 `口径不可比`。
 - 没有 `snapshot_time` 的行情或估值字段不用于排序。
+- `financial_summary.csv` 只用于最新一期摘要；`financial_statements.csv` 才用于多报告期三表明细，不能相互倒推。
+- `statement_scope=来源缺失` 时只做同公司同来源趋势观察；跨公司比较和统一口径派生计算写 `口径不可比` 或 `来源缺失`。
+
+## 抓取财务报表明细
+
+已有 `peer_universe.csv` 时，可以单独生成资产负债表、利润表和现金流量表的
+多报告期标准长表。默认报告期窗口为 12 个，普通股票池使用 AkShare；离线验收
+使用 fixture。该阶段是可选补充数据，不改变 `financial_summary.csv`；一键准备可用
+`--financial-statement-source`、`--financial-statement-period-limit` 和
+`--financial-statement-fixture-scenario` 复现来源、窗口和离线场景。
+
+```bash
+python3 scripts/fetch_a_share_financial_statements.py \
+  --peer-universe fixtures/a-share-research-packs/robotics-reducer/peer_universe.csv \
+  --output-dir out/机器人产业链/research-pack \
+  --as-of 2026-08-16 \
+  --period-limit 12 \
+  --source fixture
+```
+
+命令写出或更新 `financial_statements.csv`、`source_manifest.json` 和
+`fetch_errors.csv`。资产负债表是报告期末时点值，利润表和现金流量表是年初至
+报告期末累计值；公告日或更新时间不可见、历史版本无法恢复、结构异常和北交所
+不支持均按固定错误阶段记录。在线来源失败时一键准备只告警并继续；可用
+`--skip-financial-statements` 跳过，配合 `--force` 会清理陈旧财务报表产物。
+
+`financial_statements.csv` 中的 `verified` 只表示来源行已定位、解析和映射，不
+代表法定完整财报或已确认合并口径。来源未声明范围时 `statement_scope` 为
+`来源缺失`，不得用于跨公司统一口径比较。
 
 ## Comps artifact smoke test
 
@@ -170,8 +199,8 @@ a-share-market-researcher:a-share-market-researcher(
 ## 抓取公开行情和财务摘要
 
 如果你已经有 `peer_universe.csv`，可以先抓取公开行情和财务摘要。这个命令会
-联网访问公开数据源，并把结果写成 research-pack 可消费的本地文件。第一版只
-覆盖行情快照和财务摘要，不抓公告、行业规模、业务暴露或三大报表明细。
+联网访问公开数据源，并把结果写成 research-pack 可消费的本地文件。该命令负责
+行情快照和财务摘要；三大报表明细由下方独立入口生成，不从摘要倒推。
 
 ```bash
 python3 scripts/fetch_a_share_public_data.py \

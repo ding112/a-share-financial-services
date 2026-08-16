@@ -50,6 +50,7 @@ summarizing any metric.
 | Market snapshot | 来源类型、来源名称、行情时间戳、口径 | Keep field as `来源缺失`; do not rank by latest performance |
 | Valuation | 来源类型、来源名称、行情时间戳、估值口径 | Keep field as `来源缺失`; flag negative or unusable denominators |
 | Financials | 来源类型、来源名称、报告期、合并或母公司口径 | Keep field as `来源缺失` or `口径不可比` |
+| Financial statements | `financial_statements.csv` 的来源类型、来源名称、报告期、`statement_scope`、`value_semantics`、单位和验证状态 | 同来源同语义趋势可读；未知范围跨公司使用写 `口径不可比` |
 | Computed fields | Formula、input fields、input sources、calculation time | Keep field as `来源缺失` when any input is missing |
 | Risk flags | 公告、交易所、监管、市场数据或用户来源 | Do not weaken risk language when source is absent |
 
@@ -57,6 +58,20 @@ Use the highest-quality source available under `a-share-data-sources`. Public
 market data can support price, liquidity, valuation, and financial-summary
 fields, but it cannot replace official disclosure for business exposure,
 orders, customers, capacity, or risk events.
+
+`financial_summary.csv` 与 `financial_statements.csv` 是两个独立契约：摘要只负责
+最新一期的快速比较，不能倒推多期三表明细。存在标准 `financial_statements.csv`
+时，可读取 `normalized_line_item` 中已声明的核心科目和原始 `value`，并保留
+`period`、`report_type`、`statement_type`、`value_semantics`、`unit`、
+`statement_scope`、`verification_status` 及来源元数据。资产负债表的期间语义是
+`point_in_time`，利润表和现金流量表是 `year_to_date`；不同语义不能合并比较。
+
+当 `statement_scope=来源缺失` 时，只允许同一公司、同一来源、期间语义一致的趋势
+观察。跨公司比较，以及 EV、EV/Revenue、EV/EBITDA、自由现金流等需要统一报表
+范围的既有计算，必须在 `comps_exceptions.csv` 或 `comps_data_gaps.csv` 标记
+`口径不可比` 或 `来源缺失`；不得把未知范围当作合并范围，也不得将
+`verified` 解读为 `official_disclosure` 或完整法定财报。此接入不新增计算器，
+不自动改写既有 `comps_main.csv` 字段或输出。
 
 ## Required fields
 
@@ -166,7 +181,7 @@ when provided by a pre-run script, export file, or analyst-supplied extract.
 | 行情快照 | 腾讯行情 API、AkShare 公开行情 | `public_market_data` | 盘中快照或访问时间 |
 | 市值和动态 PE | 腾讯行情 API、AkShare 估值字段 | `public_market_data` | 与行情快照同一时间 |
 | 财务摘要 | 同花顺 AKShare 财务摘要 | `public_market_data` | 报告期，年报或报告期口径 |
-| 三大报表 | 东方财富数据中心、定期报告 | `public_market_data` 或 `official_disclosure` | 报告期，合并报表，金额单位 |
+| 三大报表 | `financial_statements.csv`、东方财富数据中心、定期报告 | `public_market_data` 或 `official_disclosure` | 报告期、来源声明范围、金额单位；范围未知写 `口径不可比` |
 | 股本 | 交易所或公告股本数据；或总市值 / 最新价计算 | `official_disclosure` 或 `public_market_data` | 披露股本或计算值 |
 | EV 倍数 | 市值、现金、债务、收入、EBITDA 计算 | `public_market_data` 或 `user_provided` | 写明公式和输入来源 |
 | 业务暴露 | 年报、半年报、公告、投资者关系记录 | `official_disclosure` 或 `company_public_material` | 披露日期和分部口径 |

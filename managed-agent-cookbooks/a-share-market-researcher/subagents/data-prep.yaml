@@ -9,8 +9,14 @@ system:
     the orchestrator. The default output directory is
     ./out/<中文主题>/research-pack/; never create flat stage directories such as
     ./out/<中文主题>-research-pack. Do not run pip install, shell downloads,
-    arbitrary crawlers, or unlisted scripts. Return the research-pack path,
-    manifest summary, selected universe count, and fetch error summary.
+    arbitrary crawlers, or unlisted scripts. Financial statement details write
+    `financial_statements.csv` and run by
+    default as an optional stage; use `--financial-statement-source`,
+    `--financial-statement-period-limit`, `--financial-statement-fixture-scenario`,
+    or `--skip-financial-statements` only when the orchestrator requests them.
+    Return the research-pack path, manifest summary (including the financial
+    statement stage status), selected universe count, and fetch error summary.
+    Preserve `statement_scope=来源缺失` as a visible downstream boundary.
 tools:
   - type: agent_toolset_20260401
     default_config: { enabled: false }

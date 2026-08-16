@@ -54,6 +54,15 @@ AkShare 公开概念或行业板块生成 `candidate_peer_universe.csv` 和
 `peer_universe.csv`，再调用公开数据抓取器补行情和财务摘要。自动生成的概念
 或板块成分只能作为 `待验证` 线索，不能作为已验证业务暴露。
 
+一键准备还默认运行独立的 `scripts/fetch_a_share_financial_statements.py`，生成
+可选的 `financial_statements.csv` 长表。普通股票池默认使用 `akshare`，fixture
+股票池默认使用 `fixture`；可用 `--financial-statement-source`、
+`--financial-statement-period-limit` 和 `--financial-statement-fixture-scenario`
+复现来源与窗口，窗口默认 12 个报告期。离线或不需要明细时可用
+`--skip-financial-statements`，与 `--force` 一起会清理旧 CSV、来源条目和
+`financial_statement*` 错误。阶段失败只警告并保留固定表头、来源条目和错误记录，
+不改变核心研究包完成条件。
+
 辅助抓取器自动生成以下文件：
 
 | 脚本 | 输出文件 | 数据范围 |
@@ -107,6 +116,7 @@ The recommended package contains these files:
 | `peer_universe.csv` | Yes | Defines the 8 to 15 candidate A-share companies, exchange, board, peer group, theme role, and exposure source reference. |
 | `market_snapshot.csv` | No | Provides timestamped price, valuation, market-cap, liquidity, PS(TTM), volume ratio, amplitude, and short-term historical performance fields (5/20/60/120d returns). |
 | `financial_summary.csv` | No | Provides latest-period revenue, profit, margin, ROE, leverage, and cash-flow fields. |
+| `financial_statements.csv` | No | Provides visible multi-period balance-sheet, income-statement, and cash-flow line items with fixed long-table columns. `statement_scope=来源缺失` 时只支持同公司同来源趋势观察。 |
 | `company_exposure.md` | No | Stores business exposure, order, capacity, customer, product, and technology-route evidence grouped by company code. |
 | `events_and_risks.md` | No | Stores ST, suspension, restricted release, and pledge risk data grouped by company code. |
 | `market_context_fund_flow.csv` | No | Industry fund flow ranking and main capital net inflow. |
@@ -236,6 +246,7 @@ out/机器人产业链/research-pack/candidate_peer_universe.csv
 out/机器人产业链/research-pack/peer_universe.csv
 out/机器人产业链/research-pack/market_snapshot.csv
 out/机器人产业链/research-pack/financial_summary.csv
+out/机器人产业链/research-pack/financial_statements.csv
 out/机器人产业链/research-pack/research_reports.csv
 out/机器人产业链/research-pack/research_reports/
 out/机器人产业链/research-pack/investor_interactions.csv
@@ -261,6 +272,7 @@ out/机器人产业链/research-pack/source_manifest.json
 out/机器人产业链/research-pack/peer_universe.csv
 out/机器人产业链/research-pack/market_snapshot.csv
 out/机器人产业链/research-pack/financial_summary.csv
+out/机器人产业链/research-pack/financial_statements.csv
 out/机器人产业链/research-pack/company_exposure.md
 out/机器人产业链/research-pack/events_and_risks.md
 ```

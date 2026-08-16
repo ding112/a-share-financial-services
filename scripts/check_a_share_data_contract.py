@@ -9,6 +9,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "plugins/vertical-plugins/china-equity-trading/skills/a-share-data-sources/SKILL.md"
 BUNDLED = ROOT / "plugins/agent-plugins/a-share-market-researcher/skills/a-share-data-sources/SKILL.md"
+COMPS_SOURCE = ROOT / "plugins/vertical-plugins/china-equity-trading/skills/a-share-comps-analysis/SKILL.md"
+COMPS_BUNDLED = ROOT / "plugins/agent-plugins/a-share-market-researcher/skills/a-share-comps-analysis/SKILL.md"
+QUICK_START = ROOT / "docs/quick-start.md"
+ROADMAP = ROOT / "docs/china-equity-trading-roadmap.md"
+MANAGED_README = ROOT / "managed-agent-cookbooks/a-share-market-researcher/README.md"
+AGENT_PROMPT = ROOT / "plugins/agent-plugins/a-share-market-researcher/agents/a-share-market-researcher.md"
+DATA_PREP_AGENT = ROOT / "managed-agent-cookbooks/a-share-market-researcher/subagents/data-prep.yaml"
 
 REQUIRED_SECTIONS = [
     "## 研究事实类型",
@@ -55,6 +62,7 @@ REQUIRED_RESEARCH_PACK_FILES = [
     "peer_universe.csv",
     "market_snapshot.csv",
     "financial_summary.csv",
+    "financial_statements.csv",
     "company_exposure.md",
     "events_and_risks.md",
     "research_reports.csv",
@@ -104,6 +112,24 @@ REQUIRED_RESEARCH_PACK_FIELDS = [
     "question_source",
     "answerer",
     "source_url",
+    "statement_item_id",
+    "security_code",
+    "organization_type",
+    "statement_type",
+    "period",
+    "report_type",
+    "notice_date",
+    "update_date",
+    "currency",
+    "statement_scope",
+    "source_line_item",
+    "normalized_line_item",
+    "value",
+    "unit",
+    "value_semantics",
+    "domestic_audit_opinion",
+    "overseas_audit_opinion",
+    "basis",
 ]
 
 REQUIRED_INTERACTION_BOUNDARIES = [
@@ -111,6 +137,42 @@ REQUIRED_INTERACTION_BOUNDARIES = [
     "公司回复需与公告或定期报告交叉验证",
     "深交所互动易",
     "上证e互动",
+    "financial_summary.csv",
+    "financial_statements.csv",
+    "statement_scope=来源缺失",
+    "financial_statement_historical_version_unavailable",
+    "financial_statement_schema",
+    "financial_statement_unsupported",
+    "financial_statement_balance_sheet",
+    "financial_statement_income_statement",
+    "financial_statement_cash_flow",
+    "financial_statement_input",
+    "point_in_time",
+    "year_to_date",
+    "只表示来源",
+    "不得用摘要字段倒推三张报表",
+    "口径不可比",
+]
+
+REQUIRED_COMPS_BOUNDARIES = [
+    "financial_statements.csv",
+    "normalized_line_item",
+    "value_semantics",
+    "statement_scope=来源缺失",
+    "point_in_time",
+    "year_to_date",
+    "口径不可比",
+    "不新增计算器",
+]
+
+REQUIRED_DOC_TOKENS = [
+    "financial_statements.csv",
+    "--financial-statement-source",
+    "--financial-statement-period-limit",
+    "--financial-statement-fixture-scenario",
+    "--skip-financial-statements",
+    "statement_scope=来源缺失",
+    "verified",
 ]
 
 
@@ -157,6 +219,26 @@ def validate_contract() -> list[str]:
             "a-share-data-sources bundled copy drifted from vertical source "
             "(run scripts/sync-agent-skills.py)"
         )
+
+    comps_text = _read(COMPS_SOURCE)
+    for phrase in REQUIRED_COMPS_BOUNDARIES:
+        if phrase not in comps_text:
+            errors.append(f"{COMPS_SOURCE.relative_to(ROOT)} missing comps boundary `{phrase}`")
+    if COMPS_SOURCE.is_file() and COMPS_BUNDLED.is_file() and _read(COMPS_SOURCE) != _read(COMPS_BUNDLED):
+        errors.append(
+            "a-share-comps-analysis bundled copy drifted from vertical source "
+            "(run scripts/sync-agent-skills.py)"
+        )
+    for document in [QUICK_START, ROADMAP, MANAGED_README]:
+        document_text = _read(document)
+        for token in REQUIRED_DOC_TOKENS:
+            if token not in document_text:
+                errors.append(f"{document.relative_to(ROOT)} missing downstream token `{token}`")
+    for document in [AGENT_PROMPT, DATA_PREP_AGENT]:
+        document_text = _read(document)
+        for token in ["financial_statements.csv", "statement_scope=来源缺失"]:
+            if token not in document_text:
+                errors.append(f"{document.relative_to(ROOT)} missing financial statement token `{token}`")
 
     return errors
 

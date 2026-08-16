@@ -154,6 +154,25 @@ FactSet 或 Bloomberg。A 股数据源由 `a-share-data-sources` 技能统一描
 如果字段不能从上述来源或用户材料验证，输出必须标记 `来源缺失` 或 `待验证`，
 不能估算行情、估值、财务指标、市场份额或行业规模。
 
+## 第五阶段：财务报表明细接入（已接入）
+
+研究包已接入可选的 `financial_statements.csv` 三表长表阶段。自动准备默认运行
+独立入口，普通股票池使用 AkShare，fixture 股票池使用 fixture；可通过来源、报告
+期数量和 fixture 场景参数（`--financial-statement-source`、
+`--financial-statement-period-limit`、`--financial-statement-fixture-scenario`）复现，
+或用 `--skip-financial-statements` 显式跳过。
+财务摘要和三表明细保持两个独立契约：
+摘要只承担最新一期快速比较，明细保留沪深证券的多报告期来源行项目。
+
+当前边界：公告日或更新时间晚于研究截止日的版本不可见，截止日后更新且无法恢复
+历史版本时明确降级，未知范围保持 `statement_scope=来源缺失`，北交所写不支持，
+失败只警告并保留稳定产物。`verified` 只表示来源行已定位、解析和映射，不等同于
+法定完整披露或合并口径；跨公司比较和统一口径派生计算必须降级为 `口径不可比`
+或 `来源缺失`。
+
+后续边界仍保留：完整法定财报与附注、北交所三表支持、报表范围恢复、单季度/TTM、
+EV/Revenue、EV/EBITDA、自由现金流等派生计算均不在本阶段自动实现。
+
 ## 验收标准
 
 第一版完成后，用以下样例请求验收：
