@@ -224,7 +224,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--fixture-scenario",
-        choices=["success", "no-data", "unknown-field"],
+        choices=["success", "no-data", "unknown-field", "non-annual", "invalid-income-value"],
         default="success",
         help="fixture 离线场景。",
     )
@@ -343,7 +343,10 @@ def selected_core_fields(statement_type: str, record: dict[str, Any]) -> dict[st
     for normalized, candidates in CORE_MAPPINGS[statement_type]:
         for field in candidates:
             if field in record and not is_missing(record[field]):
-                decimal_text(record[field])
+                try:
+                    decimal_text(record[field])
+                except ValueError:
+                    continue
                 selected[normalized] = field
                 break
     return selected
@@ -361,20 +364,26 @@ def metadata_from_record(
     statement_type: str, record: dict[str, Any], peer: dict[str, str]
 ) -> dict[str, str]:
     period = date_text(record.get("REPORT_DATE"), "REPORT_DATE")
+    report_type = str(record.get("REPORT_TYPE") or MISSING)
+    audit_opinion_available = report_type == "年报"
     return {
         "security_code": peer["code"],
         "security_name": str(record.get("SECURITY_NAME_ABBR") or peer["name"] or MISSING),
         "organization_type": str(record.get("ORG_TYPE") or MISSING),
         "statement_type": statement_type,
         "period": period,
-        "report_type": str(record.get("REPORT_TYPE") or MISSING),
+        "report_type": report_type,
         "notice_date": date_text(record.get("NOTICE_DATE"), "NOTICE_DATE"),
         "update_date": date_text(record.get("UPDATE_DATE"), "UPDATE_DATE"),
         "currency": str(record.get("CURRENCY") or MISSING),
         "statement_scope": MISSING,
         "value_semantics": VALUE_SEMANTICS[statement_type],
-        "domestic_audit_opinion": str(record.get("OPINION_TYPE") or MISSING),
-        "overseas_audit_opinion": str(record.get("OSOPINION_TYPE") or MISSING),
+        "domestic_audit_opinion": (
+            str(record.get("OPINION_TYPE") or MISSING) if audit_opinion_available else MISSING
+        ),
+        "overseas_audit_opinion": (
+            str(record.get("OSOPINION_TYPE") or MISSING) if audit_opinion_available else MISSING
+        ),
         "source_type": "public_market_data",
         "source_name": SOURCE_NAME,
     }
@@ -395,9 +404,13 @@ def raw_item_rows(
             try:
                 value_text = decimal_text(value)
             except ValueError:
-                continue
-            unit = "CNY/share" if field in PER_SHARE_FIELDS else "CNY"
-            verification_status = "verified"
+                value_text = str(value).strip()
+                unit = "CNY/share" if field in PER_SHARE_FIELDS else "CNY"
+                verification_status = "待验证"
+                schema_messages.append(f"{STATEMENT_LABELS[statement_type]}字段无法解析为数值: {field}")
+            else:
+                unit = "CNY/share" if field in PER_SHARE_FIELDS else "CNY"
+                verification_status = "verified"
         else:
             value_text = str(value).strip()
             unit = MISSING
@@ -560,6 +573,11 @@ def fixture_records(
     ]
     if scenario == "unknown-field" and statement_type == "balance_sheet":
         records[0]["FUTURE_ASSET_ITEM"] = 9876
+    if scenario == "non-annual":
+        for record in records:
+            record["REPORT_TYPE"] = "中报"
+    if scenario == "invalid-income-value" and statement_type == "income_statement":
+        records[0]["BASIC_EPS"] = "not-a-number"
     return records
 
 

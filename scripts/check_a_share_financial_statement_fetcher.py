@@ -404,6 +404,53 @@ def validate_unknown_field(errors: list[str]) -> None:
             errors.append("未知来源字段必须记录 financial_statement_schema")
 
 
+def validate_income_statement_degradations(errors: list[str]) -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        peers = root / "peers.csv"
+        write_peers(peers)
+        result = run_fetcher(root, peers, "--fixture-scenario", "non-annual")
+        if result.returncode != 0:
+            errors.append(f"非年报场景退出码为 {result.returncode}: {result.stderr}")
+            return
+        income_rows = [
+            row for row in read_rows(root / "output" / "financial_statements.csv")
+            if row["statement_type"] == "income_statement"
+        ]
+        if not income_rows or any(
+            row["domestic_audit_opinion"] != "来源缺失"
+            or row["overseas_audit_opinion"] != "来源缺失"
+            for row in income_rows
+        ):
+            errors.append("非年报利润表的国内和海外审计意见必须降级为来源缺失")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        peers = root / "peers.csv"
+        write_peers(peers)
+        result = run_fetcher(root, peers, "--fixture-scenario", "invalid-income-value")
+        if result.returncode != 0:
+            errors.append(f"利润表异常数值场景退出码为 {result.returncode}: {result.stderr}")
+            return
+        rows = read_rows(root / "output" / "financial_statements.csv")
+        invalid_rows = [
+            row for row in rows
+            if row["statement_type"] == "income_statement"
+            and row["source_line_item"] == "BASIC_EPS"
+            and row["value"] == "not-a-number"
+        ]
+        if not invalid_rows or any(
+            row["unit"] != "CNY/share"
+            or row["normalized_line_item"] != "来源缺失"
+            or row["verification_status"] != "待验证"
+            for row in invalid_rows
+        ):
+            errors.append("无法解析的已知利润表项目必须保留原值并明确降级")
+        stages = {row.get("stage") for row in read_rows(root / "output" / "fetch_errors.csv")}
+        if "financial_statement_schema" not in stages:
+            errors.append("无法解析的已知利润表项目必须记录 financial_statement_schema")
+
+
 def validate_bj_unsupported(errors: list[str]) -> None:
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
@@ -425,6 +472,7 @@ def main() -> int:
     validate_success(errors)
     validate_input_errors(errors)
     validate_unknown_field(errors)
+    validate_income_statement_degradations(errors)
     validate_bj_unsupported(errors)
     if errors:
         print(f"FAIL — {len(errors)} A 股财务报表明细问题:", file=sys.stderr)
