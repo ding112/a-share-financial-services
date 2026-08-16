@@ -145,13 +145,12 @@ KNOWN_AMOUNT_FIELDS = frozenset(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--peer-universe", required=True, help="包含 A 股股票池的 CSV。")
+    parser.add_argument("--peer-universe", help="包含 A 股股票池的 CSV。")
     parser.add_argument("--output-dir", required=True, help="research-pack 输出目录。")
     parser.add_argument("--as-of", required=True, help="研究截止日，例如 2026-08-16。")
     parser.add_argument(
         "--period-limit",
-        type=int,
-        default=12,
+        default="12",
         help="每个证券最多保留的资产负债表报告期数，默认 12。",
     )
     parser.add_argument(
@@ -162,7 +161,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--fixture-scenario",
-        choices=["success", "no-data"],
+        choices=["success", "no-data", "unknown-field"],
         default="success",
         help="fixture 离线场景。",
     )
@@ -183,12 +182,12 @@ def normalize_a_share_code(raw_code: str) -> str:
     value = raw_code.strip().upper()
     match = re.fullmatch(r"(\d{1,6})(?:\.(SH|SZ|BJ))?", value)
     if not match:
-        raise ValueError(f"unsupported A-share code: {raw_code!r}")
+        raise ValueError(f"不支持的 A 股代码: {raw_code!r}")
     symbol = match.group(1).zfill(6)
     inferred = infer_exchange(symbol)
     supplied = match.group(2)
     if inferred is None or (supplied and supplied != inferred):
-        raise ValueError(f"unsupported A-share code: {raw_code!r}")
+        raise ValueError(f"不支持的 A 股代码: {raw_code!r}")
     return f"{symbol}.{inferred}"
 
 
@@ -200,7 +199,7 @@ def read_peers(path: Path) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
     with path.open(newline="", encoding="utf-8") as handle:
         reader = csv.DictReader(handle)
         if not reader.fieldnames or "code" not in reader.fieldnames:
-            raise ValueError(f"peer universe requires code column: {path}")
+            raise ValueError(f"股票池需要 code 列: {path}")
         raw_rows = list(reader)
     peers: list[dict[str, str]] = []
     errors: list[dict[str, str]] = []
@@ -217,7 +216,7 @@ def read_peers(path: Path) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
         seen.add(code)
         peers.append({"code": code, "name": str(row.get("name") or "").strip()})
     if not peers:
-        raise ValueError(f"peer universe contains no valid A-share code: {path}")
+        raise ValueError(f"股票池不包含有效 A 股代码: {path}")
     return peers, errors
 
 
@@ -233,13 +232,13 @@ def is_missing(value: Any) -> bool:
 
 def decimal_text(value: Any) -> str:
     if is_missing(value):
-        raise ValueError("empty value")
+        raise ValueError("数值为空")
     try:
         number = Decimal(str(value))
     except (InvalidOperation, ValueError) as exc:
-        raise ValueError(f"invalid numeric value: {value!r}") from exc
+        raise ValueError(f"无法解析数值: {value!r}") from exc
     if not number.is_finite():
-        raise ValueError(f"invalid numeric value: {value!r}")
+        raise ValueError(f"无法解析数值: {value!r}")
     text = format(number, "f")
     if "." in text:
         text = text.rstrip("0").rstrip(".")
@@ -316,19 +315,29 @@ def metadata_from_record(record: dict[str, Any], peer: dict[str, str]) -> dict[s
     }
 
 
-def raw_item_rows(record: dict[str, Any], metadata: dict[str, str]) -> list[dict[str, str]]:
+def raw_item_rows(
+    record: dict[str, Any], metadata: dict[str, str]
+) -> tuple[list[dict[str, str]], list[str]]:
     selected = selected_core_fields(record)
     rows: list[dict[str, str]] = []
+    schema_messages: list[str] = []
     for field in sorted(record):
         value = record[field]
         if field in METADATA_FIELDS or field.endswith("_YOY") or is_missing(value):
             continue
-        if field not in KNOWN_AMOUNT_FIELDS:
-            continue
-        try:
-            value_text = decimal_text(value)
-        except ValueError:
-            continue
+        known_amount = field in KNOWN_AMOUNT_FIELDS
+        if known_amount:
+            try:
+                value_text = decimal_text(value)
+            except ValueError:
+                continue
+            unit = "CNY"
+            verification_status = "verified"
+        else:
+            value_text = str(value).strip()
+            unit = MISSING
+            verification_status = "待验证"
+            schema_messages.append(f"资产负债表出现未识别行项目: {field}")
         normalized = core_mapping_for_field(field) or MISSING
         if normalized != MISSING and selected.get(normalized) != field:
             normalized = MISSING
@@ -338,16 +347,16 @@ def raw_item_rows(record: dict[str, Any], metadata: dict[str, str]) -> list[dict
                 "source_line_item": field,
                 "normalized_line_item": normalized,
                 "value": value_text,
-                "unit": "CNY",
-                "verification_status": "verified",
-                "basis": item_basis(field, normalized, "CNY"),
+                "unit": unit,
+                "verification_status": verification_status,
+                "basis": item_basis(field, normalized, unit),
             }
         )
         row["statement_item_id"] = statement_item_id(
             row["security_code"], row["statement_type"], row["period"], field
         )
         rows.append(row)
-    return rows
+    return rows, schema_messages
 
 
 def missing_core_rows(rows: list[dict[str, str]], metadata: dict[str, str]) -> list[dict[str, str]]:
@@ -375,10 +384,12 @@ def missing_core_rows(rows: list[dict[str, str]], metadata: dict[str, str]) -> l
     return placeholders
 
 
-def normalize_record(record: dict[str, Any], peer: dict[str, str]) -> list[dict[str, str]]:
+def normalize_record(
+    record: dict[str, Any], peer: dict[str, str]
+) -> tuple[list[dict[str, str]], list[str]]:
     metadata = metadata_from_record(record, peer)
-    rows = raw_item_rows(record, metadata)
-    return rows + missing_core_rows(rows, metadata)
+    rows, schema_messages = raw_item_rows(record, metadata)
+    return rows + missing_core_rows(rows, metadata), schema_messages
 
 
 def fixture_record(peer: dict[str, str], period: str, sequence: int) -> dict[str, Any]:
@@ -432,10 +443,13 @@ def fixture_record(peer: dict[str, str], period: str, sequence: int) -> dict[str
 def fixture_records(peer: dict[str, str], scenario: str, sequence: int) -> list[dict[str, Any]]:
     if scenario == "no-data":
         return []
-    return [
+    records = [
         fixture_record(peer, "2025-12-31", sequence),
         fixture_record(peer, "2024-12-31", sequence),
     ]
+    if scenario == "unknown-field":
+        records[0]["FUTURE_ASSET_ITEM"] = 9876
+    return records
 
 
 def fetch_akshare_records(code: str) -> list[dict[str, Any]]:
@@ -542,25 +556,40 @@ def run_pipeline(args: argparse.Namespace) -> int:
     rows: list[dict[str, str]] = []
     errors: list[dict[str, str]] = []
     try:
-        if args.period_limit < 1:
-            raise ValueError("--period-limit must be positive")
+        try:
+            period_limit = int(args.period_limit)
+        except ValueError as exc:
+            raise ValueError("--period-limit 必须为正整数") from exc
+        if period_limit < 1:
+            raise ValueError("--period-limit 必须为正整数")
         as_of = dt.date.fromisoformat(args.as_of[:10])
+        if not args.peer_universe:
+            raise ValueError("缺少 --peer-universe")
         peers, input_errors = read_peers(Path(args.peer_universe))
         errors.extend(input_errors)
     except Exception as exc:
         errors.append(error_row(MISSING, "financial_statement_input", str(exc)))
-        write_outputs(output_dir, [], errors, args.as_of, args.period_limit)
-        print(f"financial statement input failed: {exc}", file=sys.stderr)
+        write_outputs(output_dir, [], errors, args.as_of, 12)
+        print(f"财务报表明细输入失败: {exc}", file=sys.stderr)
         return 1
 
     for sequence, peer in enumerate(peers, start=1):
+        if peer["code"].endswith(".BJ"):
+            errors.append(
+                error_row(
+                    peer["code"],
+                    "financial_statement_unsupported",
+                    "第一版财务报表明细仅支持上交所和深交所证券",
+                )
+            )
+            continue
         try:
             records = (
                 fixture_records(peer, args.fixture_scenario, sequence)
                 if args.source == "fixture"
                 else fetch_akshare_records(peer["code"])
             )
-            selected = select_records(records, as_of, args.period_limit)
+            selected = select_records(records, as_of, period_limit)
             if not selected:
                 errors.append(
                     error_row(
@@ -571,14 +600,19 @@ def run_pipeline(args: argparse.Namespace) -> int:
                 )
                 continue
             for record in selected:
-                rows.extend(normalize_record(record, peer))
+                normalized_rows, schema_messages = normalize_record(record, peer)
+                rows.extend(normalized_rows)
+                errors.extend(
+                    error_row(peer["code"], "financial_statement_schema", message)
+                    for message in schema_messages
+                )
         except Exception as exc:
             errors.append(error_row(peer["code"], "financial_statement_balance_sheet", str(exc)))
 
-    write_outputs(output_dir, rows, errors, args.as_of, args.period_limit)
-    print(f"wrote balance-sheet financial statements: {output_dir}")
+    write_outputs(output_dir, rows, errors, args.as_of, period_limit)
+    print(f"已写入资产负债表明细: {output_dir}")
     if errors:
-        print(f"completed with {len(errors)} financial statement notice(s)", file=sys.stderr)
+        print(f"财务报表明细完成，含 {len(errors)} 条提示", file=sys.stderr)
     return 0
 
 

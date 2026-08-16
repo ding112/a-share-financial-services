@@ -82,6 +82,13 @@ def write_invalid_peers(path: Path) -> None:
         writer.writerow({"code": "not-a-security", "name": "坏样本"})
 
 
+def write_single_peer(path: Path, code: str, name: str) -> None:
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=["code", "name"])
+        writer.writeheader()
+        writer.writerow({"code": code, "name": name})
+
+
 def read_rows(path: Path) -> list[dict[str, str]]:
     with path.open(newline="", encoding="utf-8") as handle:
         return list(csv.DictReader(handle))
@@ -273,11 +280,86 @@ def validate_input_errors(errors: list[str]) -> None:
         if "financial_statement_input" not in stages:
             errors.append("致命输入错误必须记录 financial_statement_input")
 
+        invalid_period = run_fetcher(root, peers, "--period-limit", "not-a-number")
+        if invalid_period.returncode == 0:
+            errors.append("无法解析的 --period-limit 必须返回非零")
+        if not statements.is_file() or not notices.is_file():
+            errors.append("无法解析的 --period-limit 仍必须写稳定产物")
+        elif "financial_statement_input" not in {row.get("stage") for row in read_rows(notices)}:
+            errors.append("无法解析的 --period-limit 必须记录 financial_statement_input")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        output = root / "output"
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(FETCHER),
+                "--output-dir",
+                str(output),
+                "--as-of",
+                "2026-08-16",
+                "--source",
+                "fixture",
+            ],
+            cwd=ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode == 0:
+            errors.append("缺少 --peer-universe 必须返回非零")
+        if not (output / "financial_statements.csv").is_file() or not (output / "fetch_errors.csv").is_file():
+            errors.append("缺少 --peer-universe 仍必须写稳定产物")
+
+
+def validate_unknown_field(errors: list[str]) -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        peers = root / "peers.csv"
+        write_peers(peers)
+        result = run_fetcher(root, peers, "--fixture-scenario", "unknown-field")
+        if result.returncode != 0:
+            errors.append(f"未知字段场景退出码为 {result.returncode}: {result.stderr}")
+            return
+        rows = read_rows(root / "output" / "financial_statements.csv")
+        unknown = [row for row in rows if row["source_line_item"] == "FUTURE_ASSET_ITEM"]
+        if len(unknown) != 2:
+            errors.append("非空未知来源字段必须为每个证券保留原始行")
+        elif any(
+            row["normalized_line_item"] != "来源缺失"
+            or row["unit"] != "来源缺失"
+            or row["verification_status"] != "待验证"
+            for row in unknown
+        ):
+            errors.append("未知来源字段必须使用来源缺失单位/规范名与待验证状态")
+        stages = {row.get("stage") for row in read_rows(root / "output" / "fetch_errors.csv")}
+        if "financial_statement_schema" not in stages:
+            errors.append("未知来源字段必须记录 financial_statement_schema")
+
+
+def validate_bj_unsupported(errors: list[str]) -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        peers = root / "peers.csv"
+        write_single_peer(peers, "920001.BJ", "北交所样本")
+        result = run_fetcher(root, peers)
+        if result.returncode != 0:
+            errors.append("北交所不支持应作为降级而非命令失败")
+        rows = read_rows(root / "output" / "financial_statements.csv")
+        if rows:
+            errors.append("北交所不支持时不得输出伪资产负债表明细")
+        stages = {row.get("stage") for row in read_rows(root / "output" / "fetch_errors.csv")}
+        if "financial_statement_unsupported" not in stages:
+            errors.append("北交所不支持必须记录 financial_statement_unsupported")
+
 
 def main() -> int:
     errors: list[str] = []
     validate_success(errors)
     validate_input_errors(errors)
+    validate_unknown_field(errors)
+    validate_bj_unsupported(errors)
     if errors:
         print(f"FAIL — {len(errors)} A 股财务报表明细问题:", file=sys.stderr)
         for error in errors:
