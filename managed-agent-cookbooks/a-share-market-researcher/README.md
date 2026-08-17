@@ -240,9 +240,9 @@ python -m pip install -r requirements.txt
 `local_pdf_path` 为 `来源缺失`，具体原因在 `fetch_errors.csv` 的
 `research_report_pdf` 阶段排查。
 
-一键入口还会按股票池交易所读取互动平台：深市使用深交所互动易，沪市使用
-上证e互动。默认按回答时间回溯 365 天、每证券最多 50 条已回复问答，可用
-`--skip-investor-interactions` 整体跳过。`investor_interactions.csv` 中的问题
+一键入口默认不执行互动平台问答；使用 `--include-investor-interactions` 后，才会按
+股票池交易所读取互动平台：深市使用深交所互动易，沪市使用上证e互动。启用后默认按
+回答时间回溯 365 天、每证券最多 50 条已回复问答。`investor_interactions.csv` 中的问题
 断言不得作为事实；公司回复固定为 `company_public_material`、`待验证`，并需
 回到公告或定期报告交叉验证。
 

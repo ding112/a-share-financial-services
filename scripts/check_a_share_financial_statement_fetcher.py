@@ -405,9 +405,21 @@ def validate_success(errors: list[str]) -> None:
             errors.append("来源清单必须只包含一条财务报表明细条目")
         elif any(
             token not in str(entries[0])
-            for token in ["资产负债表", "利润表", "现金流量表", "2", "时点", "累计", "共享", "来源缺失"]
+            for token in [
+                "资产负债表",
+                "利润表",
+                "现金流量表",
+                "2",
+                "时点",
+                "累计",
+                "共享",
+                "来源缺失",
+                "未知字段",
+                "verified",
+                "法定披露",
+            ]
         ):
-            errors.append("来源清单缺少三表、共享窗口、期间数量、时点/累计语义或范围边界")
+            errors.append("来源清单缺少三表、共享窗口、期间数量、时点/累计语义或降级边界")
         if read_rows(errors_path):
             errors.append("成功场景不应产生抓取错误")
 
@@ -740,6 +752,80 @@ def validate_visibility_and_degradation(errors: list[str]) -> None:
         if reversed_result.returncode != 0 or (root / "output" / "financial_statements.csv").read_bytes() != duplicate_bytes:
             errors.append("完全重复候选的输出不得受来源返回顺序影响")
 
+
+def validate_financial_organization_mapping(errors: list[str]) -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        peers = root / "peers.csv"
+        write_single_peer(peers, "600519.SH", "金融企业样本")
+        result = run_fetcher(root, peers, "--fixture-scenario", "financial-org", period_limit="1")
+        if result.returncode != 0:
+            errors.append(f"金融企业组织类型场景退出码为 {result.returncode}: {result.stderr}")
+            return
+        rows = read_rows(root / "output" / "financial_statements.csv")
+        financial_rows = [row for row in rows if row["organization_type"] == "银行"]
+        if not financial_rows:
+            errors.append("金融企业场景必须保留银行组织类型元数据")
+            return
+        allowed = {
+            "total_assets",
+            "total_liabilities",
+            "total_equity",
+            "total_profit",
+            "income_tax_expense",
+            "net_profit",
+            "net_profit_attributable_to_parent",
+            "minority_profit",
+            "basic_eps",
+            "diluted_eps",
+            "net_cash_flow_from_operating_activities",
+            "net_cash_flow_from_investing_activities",
+            "net_cash_flow_from_financing_activities",
+            "net_increase_in_cash_and_cash_equivalents",
+            "ending_cash_and_cash_equivalents",
+        }
+        normalized = {
+            row["normalized_line_item"]
+            for row in financial_rows
+            if row["normalized_line_item"] != "来源缺失"
+        }
+        if not normalized.issubset(allowed):
+            errors.append("金融企业只能规范化静态适用白名单科目")
+        raw_monetary_funds = [
+            row for row in financial_rows if row["source_line_item"] == "MONETARYFUNDS"
+        ]
+        if len(raw_monetary_funds) != 1 or raw_monetary_funds[0]["normalized_line_item"] != "来源缺失":
+            errors.append("金融企业非适用货币资金字段必须保留但不得获得通用规范名称")
+        if any(
+            row["source_line_item"] == "core:monetary_funds"
+            for row in financial_rows
+        ):
+            errors.append("金融企业不适用的核心科目不得生成占位行")
+
+
+def validate_non_statement_response(errors: list[str]) -> None:
+    for scenario, label in (
+        ("non-statement-only", "仅业绩预告/快报"),
+        ("unknown-report-only", "未知报告类型"),
+    ):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            peers = root / "peers.csv"
+            write_peers(peers)
+            result = run_fetcher(root, peers, "--fixture-scenario", scenario)
+            statements_path = root / "output" / "financial_statements.csv"
+            errors_path = root / "output" / "fetch_errors.csv"
+            rows = read_rows(statements_path) if statements_path.is_file() else []
+            stages = [row["stage"] for row in read_rows(errors_path)] if errors_path.is_file() else []
+            if result.returncode == 0:
+                errors.append(f"{label}响应时所有报表解析失败必须返回非零")
+            if rows:
+                errors.append(f"{label}响应不得生成财务报表行")
+            if "financial_statement_schema" not in stages:
+                errors.append(f"{label}响应必须记录 financial_statement_schema")
+            if any(stage.endswith("_no_data") for stage in stages):
+                errors.append(f"{label}响应不得误报为 *_no_data")
+
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         peers = root / "peers.csv"
@@ -834,6 +920,8 @@ def main() -> int:
     validate_income_statement_degradations(errors)
     validate_cash_flow_no_data(errors)
     validate_visibility_and_degradation(errors)
+    validate_financial_organization_mapping(errors)
+    validate_non_statement_response(errors)
     validate_preservation_and_partial_input(errors)
     validate_bj_unsupported(errors)
     if errors:

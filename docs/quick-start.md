@@ -257,8 +257,8 @@ python3 scripts/fetch_a_share_investor_interactions.py \
 ```
 
 问答统一标记为 `company_public_material`、`待验证`。问题中的断言不构成事实；
-公司回复也不能替代法定信息披露，必须回到公告或定期报告交叉验证。一键准备默认
-运行该阶段，可用 `--skip-investor-interactions` 整体跳过。
+公司回复也不能替代法定信息披露，必须回到公告或定期报告交叉验证。一键准备默认不执行
+该阶段；需要时使用 `--include-investor-interactions` 显式启用。
 
 ## 本地公开数据预处理
 

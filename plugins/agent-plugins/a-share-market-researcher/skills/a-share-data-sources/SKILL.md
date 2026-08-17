@@ -217,10 +217,10 @@ ST、`*ST` 或退市风险的公司，最多保留 15 只。少于 8 只时可�
 fixture。来源完全失败时一键准备只告警并继续核心数据包，独立入口仍保留非零
 退出码和稳定空产物。
 
-互动平台问答阶段同样默认执行，可以用 `--skip-investor-interactions` 跳过。
+互动平台问答阶段默认不执行，需要用 `--include-investor-interactions` 显式启用。
 普通股票池按交易所读取深交所互动易或上证e互动，fixture 股票池默认使用离线
-fixture；来源完全失败时只告警并继续核心数据包。跳过阶段时必须同时移除旧的
- `investor_interactions.csv`、来源清单条目和对应错误记录。
+fixture；来源完全失败时只告警并继续核心数据包。未启用或强制重跑关闭阶段时必须同时
+移除旧的 `investor_interactions.csv`、来源清单条目和对应错误记录。
 
 财务报表明细阶段默认执行，普通股票池解析为 `akshare`，fixture 股票池解析为
 `fixture`；显式 `--financial-statement-source` 优先，报告期数量默认 12 且必须

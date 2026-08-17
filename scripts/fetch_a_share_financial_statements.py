@@ -13,11 +13,12 @@ import datetime as dt
 import hashlib
 import json
 import math
-import re
 import sys
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
+
+from a_share_security_codes import read_peer_universe
 
 MISSING = "来源缺失"
 SOURCE_NAME = "AkShare（东方财富财务报表）"
@@ -64,10 +65,6 @@ METADATA_FIELDS = {
     "OSOPINION_TYPE",
     "LISTING_STATE",
 }
-BJ_PREFIXES = (
-    "430", "830", "831", "832", "833", "834", "835", "836", "837",
-    "838", "839", "870", "871", "872", "873", "920",
-)
 
 BALANCE_SHEET_CORE_MAPPINGS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("monetary_funds", ("MONETARYFUNDS",)),
@@ -122,6 +119,27 @@ CORE_MAPPINGS = {
     "income_statement": INCOME_STATEMENT_CORE_MAPPINGS,
     "cash_flow_statement": CASH_FLOW_STATEMENT_CORE_MAPPINGS,
 }
+GENERAL_ORGANIZATION_TYPE = "通用"
+FINANCIAL_ORGANIZATION_TYPES = frozenset({"银行", "保险", "证券"})
+FINANCIAL_CORE_ALLOWLIST = frozenset(
+    {
+        "total_assets",
+        "total_liabilities",
+        "total_equity",
+        "total_profit",
+        "income_tax_expense",
+        "net_profit",
+        "net_profit_attributable_to_parent",
+        "minority_profit",
+        "basic_eps",
+        "diluted_eps",
+        "net_cash_flow_from_operating_activities",
+        "net_cash_flow_from_investing_activities",
+        "net_cash_flow_from_financing_activities",
+        "net_increase_in_cash_and_cash_equivalents",
+        "ending_cash_and_cash_equivalents",
+    }
+)
 CORE_ORDER = {
     statement_type: {name: index for index, (name, _) in enumerate(mappings)}
     for statement_type, mappings in CORE_MAPPINGS.items()
@@ -315,6 +333,9 @@ def parse_args() -> argparse.Namespace:
             "future-report-period",
             "invalid-period-date",
             "invalid-report-type",
+            "financial-org",
+            "non-statement-only",
+            "unknown-report-only",
         ],
         default="success",
         help="fixture 离线场景。",
@@ -322,53 +343,16 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def infer_exchange(symbol: str) -> str | None:
-    if symbol.startswith(("600", "601", "603", "605", "688", "689")):
-        return "SH"
-    if symbol.startswith(BJ_PREFIXES):
-        return "BJ"
-    if symbol.startswith(("000", "001", "002", "003", "300", "301")):
-        return "SZ"
-    return None
-
-
-def normalize_a_share_code(raw_code: str) -> str:
-    value = raw_code.strip().upper()
-    match = re.fullmatch(r"(\d{1,6})(?:\.(SH|SZ|BJ))?", value)
-    if not match:
-        raise ValueError(f"不支持的 A 股代码: {raw_code!r}")
-    symbol = match.group(1).zfill(6)
-    inferred = infer_exchange(symbol)
-    supplied = match.group(2)
-    if inferred is None or (supplied and supplied != inferred):
-        raise ValueError(f"不支持的 A 股代码: {raw_code!r}")
-    return f"{symbol}.{inferred}"
-
-
 def error_row(code: str, stage: str, error: str) -> dict[str, str]:
     return {"code": code, "source": SOURCE_KEY, "stage": stage, "error": error}
 
 
 def read_peers(path: Path) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
-    with path.open(newline="", encoding="utf-8") as handle:
-        reader = csv.DictReader(handle)
-        if not reader.fieldnames or "code" not in reader.fieldnames:
-            raise ValueError(f"股票池需要 code 列: {path}")
-        raw_rows = list(reader)
-    peers: list[dict[str, str]] = []
-    errors: list[dict[str, str]] = []
-    seen: set[str] = set()
-    for row in raw_rows:
-        raw_code = str(row.get("code") or "").strip()
-        try:
-            code = normalize_a_share_code(raw_code)
-        except ValueError as exc:
-            errors.append(error_row(raw_code or MISSING, "financial_statement_input", str(exc)))
-            continue
-        if code in seen:
-            continue
-        seen.add(code)
-        peers.append({"code": code, "name": str(row.get("name") or "").strip()})
+    peers, input_errors = read_peer_universe(path)
+    errors = [
+        error_row(code, "financial_statement_input", message)
+        for code, message in input_errors
+    ]
     if not peers:
         raise ValueError(f"股票池不包含有效 A 股代码: {path}")
     return peers, errors
@@ -422,16 +406,30 @@ def statement_item_id(code: str, statement_type: str, period: str, source_line_i
     return "fs_" + hashlib.sha256(material.encode("utf-8")).hexdigest()[:24]
 
 
-def core_mapping_for_field(statement_type: str, field: str) -> str | None:
+def is_core_applicable(organization_type: str, normalized: str) -> bool:
+    if organization_type == GENERAL_ORGANIZATION_TYPE:
+        return True
+    return (
+        organization_type in FINANCIAL_ORGANIZATION_TYPES
+        and normalized in FINANCIAL_CORE_ALLOWLIST
+    )
+
+
+def core_mapping_for_field(
+    statement_type: str, field: str, organization_type: str
+) -> str | None:
     for normalized, candidates in CORE_MAPPINGS[statement_type]:
-        if field in candidates:
+        if is_core_applicable(organization_type, normalized) and field in candidates:
             return normalized
     return None
 
 
 def selected_core_fields(statement_type: str, record: dict[str, Any]) -> dict[str, str]:
+    organization_type = str(record.get("ORG_TYPE") or MISSING)
     selected: dict[str, str] = {}
     for normalized, candidates in CORE_MAPPINGS[statement_type]:
+        if not is_core_applicable(organization_type, normalized):
+            continue
         for field in candidates:
             if field in record and not is_missing(record[field]):
                 try:
@@ -507,7 +505,10 @@ def raw_item_rows(
             unit = MISSING
             verification_status = "待验证"
             schema_messages.append(f"{STATEMENT_LABELS[statement_type]}出现未识别行项目: {field}")
-        normalized = core_mapping_for_field(statement_type, field) or MISSING
+        normalized = (
+            core_mapping_for_field(statement_type, field, metadata["organization_type"])
+            or MISSING
+        )
         if normalized != MISSING and selected.get(normalized) != field:
             normalized = MISSING
         row = dict(metadata)
@@ -534,6 +535,8 @@ def missing_core_rows(
     present = {row["normalized_line_item"] for row in rows if row["normalized_line_item"] != MISSING}
     placeholders: list[dict[str, str]] = []
     for normalized, _ in CORE_MAPPINGS[statement_type]:
+        if not is_core_applicable(metadata["organization_type"], normalized):
+            continue
         if normalized in present:
             continue
         source_line_item = f"core:{normalized}"
@@ -708,6 +711,15 @@ def fixture_records(
         "cash_flow_statement": cash_flow_statement_fixture_record,
     }
     records = [builders[statement_type](peer, period, sequence) for period in FIXTURE_PERIODS]
+    if scenario == "financial-org":
+        for record in records:
+            record["ORG_TYPE"] = "银行"
+    if scenario == "non-statement-only":
+        for record in records:
+            record["REPORT_TYPE"] = "业绩预告"
+    if scenario == "unknown-report-only":
+        for record in records:
+            record["REPORT_TYPE"] = "未知报告"
     if scenario == "unknown-field" and statement_type == "balance_sheet":
         records[0]["FUTURE_ASSET_ITEM"] = 9876
     if scenario == "non-annual":
@@ -772,11 +784,18 @@ def fetch_akshare_records(statement_type: str, code: str) -> list[dict[str, Any]
 
 def records_by_period(
     records: list[dict[str, Any]], as_of: dt.date
-) -> tuple[dict[dt.date, dict[str, Any]], list[tuple[str, str]], set[dt.date], bool]:
+) -> tuple[
+    dict[dt.date, dict[str, Any]],
+    list[tuple[str, str]],
+    set[dt.date],
+    bool,
+    bool,
+]:
     candidates: dict[dt.date, list[tuple[dt.date, str, dict[str, Any]]]] = {}
     errors: list[tuple[str, str]] = []
     rejected_periods: set[dt.date] = set()
     unknown_rejected_period = False
+    saw_regular_report = False
     for record in records:
         try:
             period = parse_date(record.get("REPORT_DATE"), "REPORT_DATE")
@@ -786,11 +805,11 @@ def records_by_period(
             continue
         report_type = str(record.get("REPORT_TYPE") or MISSING)
         if report_type not in REGULAR_REPORT_TYPES:
-            if report_type in NON_STATEMENT_REPORT_TYPES:
-                continue
-            errors.append(("financial_statement_schema", f"财务报表 REPORT_TYPE 无法识别: {report_type}"))
-            rejected_periods.add(period)
+            if report_type not in NON_STATEMENT_REPORT_TYPES:
+                errors.append(("financial_statement_schema", f"财务报表 REPORT_TYPE 无法识别: {report_type}"))
+                rejected_periods.add(period)
             continue
+        saw_regular_report = True
         try:
             notice_date = parse_date(record.get("NOTICE_DATE"), "NOTICE_DATE")
             update_date = parse_date(record.get("UPDATE_DATE"), "UPDATE_DATE")
@@ -824,7 +843,10 @@ def records_by_period(
         period: max(items, key=lambda item: (item[0], item[1]))[2]
         for period, items in candidates.items()
     }
-    return selected, errors, rejected_periods, unknown_rejected_period
+    non_statement_only = bool(records) and not saw_regular_report
+    if non_statement_only:
+        errors.append(("financial_statement_schema", "非空响应未包含有效定期财务报表记录"))
+    return selected, errors, rejected_periods, unknown_rejected_period, non_statement_only
 
 
 def shared_period_window(
@@ -889,7 +911,9 @@ def write_manifest(output_dir: Path, as_of: str, period_limit: int) -> None:
                 "financial_statement_historical_version_unavailable；日期或字段异常写 "
                 "financial_statement_schema；北交所写 financial_statement_unsupported；"
                 "输入或请求失败写对应 financial_statement 阶段；来源未声明报表范围时为来源缺失，"
-                "不得据此执行跨公司比较"
+                "未知字段保留策略为：未知非空字段保留原字段和值，规范名称和单位为来源缺失、验证状态为待验证，并记录 "
+                "financial_statement_schema；verified 只表示来源行已定位、解析和映射成功，"
+                "不表示法定披露、官方来源或报表范围已验证；不得据此执行跨公司比较"
             ),
         }
     )
@@ -969,9 +993,17 @@ def run_pipeline(args: argparse.Namespace) -> int:
                 if not isinstance(records, list):
                     raise ValueError("来源响应不是记录列表")
                 normal_responses += 1
-                selected, visibility_errors, rejected_periods, unknown_rejected_period = records_by_period(
+                (
+                    selected,
+                    visibility_errors,
+                    rejected_periods,
+                    unknown_rejected_period,
+                    non_statement_only,
+                ) = records_by_period(
                     records, as_of
                 )
+                if non_statement_only:
+                    normal_responses -= 1
                 peer_records[statement_type] = selected
                 rejected_periods_by_statement[statement_type] = rejected_periods
                 errors.extend(
@@ -979,6 +1011,8 @@ def run_pipeline(args: argparse.Namespace) -> int:
                     for stage, message in visibility_errors
                 )
                 if unknown_rejected_period:
+                    unknown_rejections.add(statement_type)
+                if non_statement_only:
                     unknown_rejections.add(statement_type)
             except Exception as exc:
                 errors.append(error_row(peer["code"], ERROR_STAGE_PREFIXES[statement_type], str(exc)))

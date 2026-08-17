@@ -329,9 +329,9 @@ def parse_args() -> argparse.Namespace:
         help="Offline investor interaction scenario used with the fixture source.",
     )
     parser.add_argument(
-        "--skip-investor-interactions",
+        "--include-investor-interactions",
         action="store_true",
-        help="Skip the optional exchange investor interaction stage.",
+        help="Include the optional exchange investor interaction stage.",
     )
     return parser.parse_args()
 
@@ -420,17 +420,55 @@ def write_csv(path: Path, rows: list[dict[str, Any]], fieldnames: list[str]) -> 
         writer.writerows(rows)
 
 
-def complete_research_pack(output_dir: Path) -> bool:
+def resolve_optional_stage_flags(
+    inputs: dict[str, Any],
+    *,
+    skip_market_activity: bool | None,
+    include_investor_interactions: bool | None,
+    skip_financial_statements: bool | None,
+) -> tuple[bool, bool, bool]:
+    return (
+        bool(
+            inputs.get("skip_market_activity")
+            if skip_market_activity is None
+            else skip_market_activity
+        ),
+        (
+            inputs.get("include_investor_interactions") is True
+            if include_investor_interactions is None
+            else include_investor_interactions
+        ),
+        bool(
+            inputs.get("skip_financial_statements")
+            if skip_financial_statements is None
+            else skip_financial_statements
+        ),
+    )
+
+
+def complete_research_pack(
+    output_dir: Path,
+    *,
+    skip_market_activity: bool | None = None,
+    include_investor_interactions: bool | None = None,
+    skip_financial_statements: bool | None = None,
+) -> bool:
     skipped_outputs: set[str] = set()
     auto_manifest = output_dir / "auto_prepare_manifest.json"
     if auto_manifest.is_file():
         try:
             inputs = json.loads(auto_manifest.read_text(encoding="utf-8")).get("inputs", {})
-            if inputs.get("skip_market_activity") is True:
+            skip_market, include_investor, skip_financial = resolve_optional_stage_flags(
+                inputs,
+                skip_market_activity=skip_market_activity,
+                include_investor_interactions=include_investor_interactions,
+                skip_financial_statements=skip_financial_statements,
+            )
+            if skip_market is True:
                 skipped_outputs.update({"block_trades.csv", "shareholder_counts.csv"})
-            if inputs.get("skip_investor_interactions") is True:
+            if include_investor is not True:
                 skipped_outputs.add("investor_interactions.csv")
-            if inputs.get("skip_financial_statements") is True:
+            if skip_financial is True:
                 skipped_outputs.add("financial_statements.csv")
         except (json.JSONDecodeError, OSError):
             pass
@@ -724,7 +762,7 @@ def write_auto_prepare_manifest(
             "investor_interaction_fixture_scenario": args.investor_interaction_fixture_scenario,
             "investor_interaction_lookback_days": args.investor_interaction_lookback_days,
             "investor_interaction_limit_per_security": args.investor_interaction_limit_per_security,
-            "skip_investor_interactions": args.skip_investor_interactions,
+            "include_investor_interactions": args.include_investor_interactions,
         },
         "outputs": {filename: filename for filename in AUTO_OUTPUTS},
         "selection": selection,
@@ -810,15 +848,19 @@ def resolved_financial_statement_source(args: argparse.Namespace) -> str:
     )
 
 
-def clear_financial_statement_outputs(output_dir: Path) -> None:
-    (output_dir / "financial_statements.csv").unlink(missing_ok=True)
-
+def clear_optional_stage_outputs(
+    output_dir: Path,
+    filenames: tuple[str, ...],
+    stage_prefixes: tuple[str, ...],
+) -> None:
+    for filename in filenames:
+        (output_dir / filename).unlink(missing_ok=True)
     manifest_path = output_dir / "source_manifest.json"
     if manifest_path.is_file():
         data = json.loads(manifest_path.read_text(encoding="utf-8"))
         data["files"] = [
             item for item in data.get("files", [])
-            if item.get("file") != "financial_statements.csv"
+            if item.get("file") not in filenames
         ]
         manifest_path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
@@ -826,9 +868,72 @@ def clear_financial_statement_outputs(output_dir: Path) -> None:
     if errors_path.is_file():
         retained = [
             row for row in read_csv(errors_path)
-            if not row.get("stage", "").startswith("financial_statement")
+            if not any(row.get("stage", "").startswith(prefix) for prefix in stage_prefixes)
         ]
         write_csv(errors_path, retained, ["code", "source", "stage", "error"])
+
+
+def clear_disabled_optional_stage_outputs(
+    output_dir: Path,
+    *,
+    skip_market_activity: bool | None = None,
+    include_investor_interactions: bool | None = None,
+    skip_financial_statements: bool | None = None,
+) -> None:
+    auto_manifest = output_dir / "auto_prepare_manifest.json"
+    if not auto_manifest.is_file():
+        return
+    try:
+        inputs = json.loads(auto_manifest.read_text(encoding="utf-8")).get("inputs", {})
+    except (json.JSONDecodeError, OSError):
+        return
+    skip_market, include_investor, skip_financial = resolve_optional_stage_flags(
+        inputs,
+        skip_market_activity=skip_market_activity,
+        include_investor_interactions=include_investor_interactions,
+        skip_financial_statements=skip_financial_statements,
+    )
+    if skip_market is True:
+        clear_optional_stage_outputs(
+            output_dir,
+            ("block_trades.csv", "shareholder_counts.csv"),
+            ("market_activity_input", "block_trade", "shareholder_count"),
+        )
+    if include_investor is not True:
+        clear_optional_stage_outputs(
+            output_dir,
+            ("investor_interactions.csv",),
+            ("investor_interaction",),
+        )
+    if skip_financial is True:
+        clear_optional_stage_outputs(
+            output_dir,
+            ("financial_statements.csv",),
+            ("financial_statement",),
+        )
+
+
+def update_reused_auto_prepare_manifest(
+    output_dir: Path,
+    *,
+    include_investor_interactions: bool | None,
+) -> None:
+    if include_investor_interactions is None:
+        return
+    auto_manifest = output_dir / "auto_prepare_manifest.json"
+    if not auto_manifest.is_file():
+        return
+    try:
+        data = json.loads(auto_manifest.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return
+    data.setdefault("inputs", {})[
+        "include_investor_interactions"
+    ] = include_investor_interactions
+    auto_manifest.write_text(
+        json.dumps(data, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
 
 
 def run_financial_statement_fetcher(
@@ -845,7 +950,11 @@ def run_financial_statement_fetcher(
         "exit_code": None,
     }
     if args.skip_financial_statements:
-        clear_financial_statement_outputs(output_dir)
+        clear_optional_stage_outputs(
+            output_dir,
+            ("financial_statements.csv",),
+            ("financial_statement",),
+        )
         log_step("skipped optional fetcher: fetch_a_share_financial_statements.py")
         return result
 
@@ -969,44 +1078,17 @@ def resolved_market_activity_source(args: argparse.Namespace) -> str:
     )
 
 
-def clear_market_activity_outputs(output_dir: Path) -> None:
-    for filename in ("block_trades.csv", "shareholder_counts.csv"):
-        (output_dir / filename).unlink(missing_ok=True)
-
-    manifest_path = output_dir / "source_manifest.json"
-    if manifest_path.is_file():
-        data = json.loads(manifest_path.read_text(encoding="utf-8"))
-        files = data.get("files", [])
-        data["files"] = [
-            item
-            for item in files
-            if item.get("file") not in {"block_trades.csv", "shareholder_counts.csv"}
-        ]
-        manifest_path.write_text(
-            json.dumps(data, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
-        )
-
-    errors_path = output_dir / "fetch_errors.csv"
-    if errors_path.is_file():
-        rows = read_csv(errors_path)
-        retained = [
-            row
-            for row in rows
-            if row.get("stage") != "market_activity_input"
-            and not row.get("stage", "").startswith("block_trade")
-            and not row.get("stage", "").startswith("shareholder_count")
-        ]
-        write_csv(errors_path, retained, ["code", "source", "stage", "error"])
-
-
 def run_market_activity_fetcher(
     args: argparse.Namespace,
     peer_path: Path,
     output_dir: Path,
 ) -> None:
     if args.skip_market_activity:
-        clear_market_activity_outputs(output_dir)
+        clear_optional_stage_outputs(
+            output_dir,
+            ("block_trades.csv", "shareholder_counts.csv"),
+            ("market_activity_input", "block_trade", "shareholder_count"),
+        )
         log_step("skipped optional fetcher: fetch_a_share_market_activity.py")
         return
     _run_optional_fetcher(
@@ -1042,40 +1124,17 @@ def resolved_investor_interaction_source(args: argparse.Namespace) -> str:
     )
 
 
-def clear_investor_interaction_outputs(output_dir: Path) -> None:
-    (output_dir / "investor_interactions.csv").unlink(missing_ok=True)
-
-    manifest_path = output_dir / "source_manifest.json"
-    if manifest_path.is_file():
-        data = json.loads(manifest_path.read_text(encoding="utf-8"))
-        files = data.get("files", [])
-        data["files"] = [
-            item
-            for item in files
-            if item.get("file") != "investor_interactions.csv"
-        ]
-        manifest_path.write_text(
-            json.dumps(data, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
-        )
-
-    errors_path = output_dir / "fetch_errors.csv"
-    if errors_path.is_file():
-        retained = [
-            row
-            for row in read_csv(errors_path)
-            if not row.get("stage", "").startswith("investor_interaction")
-        ]
-        write_csv(errors_path, retained, ["code", "source", "stage", "error"])
-
-
 def run_investor_interaction_fetcher(
     args: argparse.Namespace,
     peer_path: Path,
     output_dir: Path,
 ) -> None:
-    if args.skip_investor_interactions:
-        clear_investor_interaction_outputs(output_dir)
+    if not args.include_investor_interactions:
+        clear_optional_stage_outputs(
+            output_dir,
+            ("investor_interactions.csv",),
+            ("investor_interaction",),
+        )
         log_step("skipped optional fetcher: fetch_a_share_investor_interactions.py")
         return
     _run_optional_fetcher(
@@ -1164,11 +1223,36 @@ def patch_source_manifest(
     manifest_path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
-def ensure_writable_output(output_dir: Path, force: bool) -> None:
+def ensure_writable_output(
+    output_dir: Path,
+    force: bool,
+    *,
+    skip_market_activity: bool | None = None,
+    include_investor_interactions: bool | None = None,
+    skip_financial_statements: bool | None = None,
+) -> None:
     if not output_dir.exists():
         output_dir.mkdir(parents=True)
         return
-    if complete_research_pack(output_dir) and not force:
+    clear_disabled_optional_stage_outputs(
+        output_dir,
+        skip_market_activity=skip_market_activity,
+        include_investor_interactions=include_investor_interactions,
+        skip_financial_statements=skip_financial_statements,
+    )
+    if (
+        complete_research_pack(
+            output_dir,
+            skip_market_activity=skip_market_activity,
+            include_investor_interactions=include_investor_interactions,
+            skip_financial_statements=skip_financial_statements,
+        )
+        and not force
+    ):
+        update_reused_auto_prepare_manifest(
+            output_dir,
+            include_investor_interactions=include_investor_interactions,
+        )
         print(f"reusing existing research-pack: {output_dir}")
         raise SystemExit(0)
     if not force and any(output_dir.iterdir()):
@@ -1203,7 +1287,11 @@ def main() -> int:
     output_dir = Path(args.output_dir) if args.output_dir else stage_dir(args.theme, "research-pack")
     output_dir = output_dir.resolve()
     log_step(f"starting auto research-pack: theme={args.theme} output_dir={output_dir}")
-    ensure_writable_output(output_dir, args.force)
+    ensure_writable_output(
+        output_dir,
+        args.force,
+        include_investor_interactions=args.include_investor_interactions,
+    )
 
     log_step("loading candidate universe")
     candidates, source = load_candidates(args)

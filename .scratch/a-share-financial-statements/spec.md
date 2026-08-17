@@ -1,6 +1,6 @@
 # A 股财务报表明细接入规格
 
-Status: ready-for-agent
+Status: completed
 
 ## Problem Statement
 
@@ -254,3 +254,9 @@ A 股研究数据包目前只有 `financial_summary.csv`：每个证券仅保留
 - 领域词汇“财务报表明细”“财务摘要”“财务报表行项目”“财务报表可见版本”“财务报表期间值”“财务报表报告期窗口”“财务报表组织类型”和“口径不可比”已经写入 A 股研究数据领域上下文，实现和文档必须沿用这些含义。
 - 回滚方式是使用一键准备的跳过开关停止可选阶段，或回退新增抓取与契约变更；本功能不迁移既有数据，也不改变核心文件格式。
 - 本规格来自已完成并确认的 grilling 共识。下一步可使用 `/to-tickets` 将其拆成具有依赖关系的可实施 tickets。
+
+## Acceptance
+
+- 2026-08-17：完成本轮 Code Review 修复并完成离线验收。非三表响应记录 `financial_statement_schema` 且不误写 `*_no_data`；金融组织类型只规范化适用的通用总计科目；未知字段保留并明确 `verified` 边界；投资者互动保留独立抓取器但从一键准备默认流程移除，改为 `--include-investor-interactions` 显式启用；股票池解析和可选阶段清理已抽取为共享模块。
+- 2026-08-17：`python3 scripts/check.py` 通过（59 个文件、0 个问题）；财务报表、投资者互动、一键准备、数据源、文档和 Agent handoff 专项检查、Python 语法检查及 `git diff --check HEAD` 均通过。
+- 2026-08-17：未执行联网 AkShare 非空 smoke；当前环境的外网代理连接受限。离线 fixture 和公开 CLI 黑盒检查作为本次验收依据。

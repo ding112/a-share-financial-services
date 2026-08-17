@@ -23,3 +23,7 @@
 验收备注：已尝试对 fixture 股票池中的沪市和深市样本执行 AkShare 只读 smoke；当前
 执行环境禁止外网连接（代理连接 `Operation not permitted`），因此联网非空输出未执行，
 离线 fixture 和全部公开 CLI 契约检查仍作为验收依据。
+
+## Comments
+
+- 2026-08-17 验收：数据契约校验已拆分为数据源、文档覆盖和 Agent/downstream handoff 三个入口并在 `scripts/check.py` 分别注册；快速开始、路线图、Managed Agent README、垂直 Skill 及同步后的 Agent bundle 均通过文档契约检查。全仓检查结果为 59 个文件、0 个问题。

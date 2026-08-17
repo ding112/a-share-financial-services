@@ -21,6 +21,12 @@ import sys
 from pathlib import Path
 
 from check_a_share_data_contract import validate_contract  # noqa: E402
+from check_a_share_documentation_contract import (  # noqa: E402
+    validate_contract as validate_documentation_contract,
+)
+from check_a_share_agent_handoff_contract import (  # noqa: E402
+    validate_contract as validate_agent_handoff_contract,
+)
 from check_a_share_idea_generation_contract import (  # noqa: E402
     validate_contract as validate_idea_generation_contract,
 )
@@ -379,6 +385,12 @@ for d in sorted(MANAGED.iterdir()):
 # --- 6. A-share data source contract ---------------------------------------
 for contract_error in validate_contract():
     err(contract_error)
+
+for documentation_error in validate_documentation_contract():
+    err(documentation_error)
+
+for handoff_error in validate_agent_handoff_contract():
+    err(handoff_error)
 
 for contract_error in validate_comps_artifact_contract():
     err(contract_error)

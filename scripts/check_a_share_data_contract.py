@@ -9,13 +9,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "plugins/vertical-plugins/china-equity-trading/skills/a-share-data-sources/SKILL.md"
 BUNDLED = ROOT / "plugins/agent-plugins/a-share-market-researcher/skills/a-share-data-sources/SKILL.md"
-COMPS_SOURCE = ROOT / "plugins/vertical-plugins/china-equity-trading/skills/a-share-comps-analysis/SKILL.md"
-COMPS_BUNDLED = ROOT / "plugins/agent-plugins/a-share-market-researcher/skills/a-share-comps-analysis/SKILL.md"
-QUICK_START = ROOT / "docs/quick-start.md"
-ROADMAP = ROOT / "docs/china-equity-trading-roadmap.md"
-MANAGED_README = ROOT / "managed-agent-cookbooks/a-share-market-researcher/README.md"
-AGENT_PROMPT = ROOT / "plugins/agent-plugins/a-share-market-researcher/agents/a-share-market-researcher.md"
-DATA_PREP_AGENT = ROOT / "managed-agent-cookbooks/a-share-market-researcher/subagents/data-prep.yaml"
 
 REQUIRED_SECTIONS = [
     "## 研究事实类型",
@@ -154,28 +147,6 @@ REQUIRED_INTERACTION_BOUNDARIES = [
     "口径不可比",
 ]
 
-REQUIRED_COMPS_BOUNDARIES = [
-    "financial_statements.csv",
-    "normalized_line_item",
-    "value_semantics",
-    "statement_scope=来源缺失",
-    "point_in_time",
-    "year_to_date",
-    "口径不可比",
-    "不新增计算器",
-]
-
-REQUIRED_DOC_TOKENS = [
-    "financial_statements.csv",
-    "--financial-statement-source",
-    "--financial-statement-period-limit",
-    "--financial-statement-fixture-scenario",
-    "--skip-financial-statements",
-    "statement_scope=来源缺失",
-    "verified",
-]
-
-
 def _read(path: Path) -> str:
     if not path.is_file():
         raise AssertionError(f"missing file: {path.relative_to(ROOT)}")
@@ -219,26 +190,6 @@ def validate_contract() -> list[str]:
             "a-share-data-sources bundled copy drifted from vertical source "
             "(run scripts/sync-agent-skills.py)"
         )
-
-    comps_text = _read(COMPS_SOURCE)
-    for phrase in REQUIRED_COMPS_BOUNDARIES:
-        if phrase not in comps_text:
-            errors.append(f"{COMPS_SOURCE.relative_to(ROOT)} missing comps boundary `{phrase}`")
-    if COMPS_SOURCE.is_file() and COMPS_BUNDLED.is_file() and _read(COMPS_SOURCE) != _read(COMPS_BUNDLED):
-        errors.append(
-            "a-share-comps-analysis bundled copy drifted from vertical source "
-            "(run scripts/sync-agent-skills.py)"
-        )
-    for document in [QUICK_START, ROADMAP, MANAGED_README]:
-        document_text = _read(document)
-        for token in REQUIRED_DOC_TOKENS:
-            if token not in document_text:
-                errors.append(f"{document.relative_to(ROOT)} missing downstream token `{token}`")
-    for document in [AGENT_PROMPT, DATA_PREP_AGENT]:
-        document_text = _read(document)
-        for token in ["financial_statements.csv", "statement_scope=来源缺失"]:
-            if token not in document_text:
-                errors.append(f"{document.relative_to(ROOT)} missing financial statement token `{token}`")
 
     return errors
 

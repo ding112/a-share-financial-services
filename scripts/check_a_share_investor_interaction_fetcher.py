@@ -453,7 +453,7 @@ def validate_auto_prepare(errors: list[str]) -> None:
         "--investor-interaction-fixture-scenario",
         "--investor-interaction-lookback-days",
         "--investor-interaction-limit-per-security",
-        "--skip-investor-interactions",
+        "--include-investor-interactions",
     ):
         if flag not in help_result.stdout:
             errors.append(f"一键入口帮助缺少 {flag}")
@@ -465,6 +465,7 @@ def validate_auto_prepare(errors: list[str]) -> None:
                 *auto_prepare_command(output),
                 "--investor-interaction-fixture-scenario",
                 "all-failure",
+                "--include-investor-interactions",
             ],
             cwd=ROOT,
             check=False,
@@ -486,7 +487,7 @@ def validate_auto_prepare(errors: list[str]) -> None:
                 "investor_interaction_fixture_scenario",
                 "investor_interaction_lookback_days",
                 "investor_interaction_limit_per_security",
-                "skip_investor_interactions",
+                "include_investor_interactions",
             ):
                 if key not in inputs:
                     errors.append(f"一键准备清单缺少 {key}")
@@ -503,31 +504,100 @@ def validate_auto_prepare(errors: list[str]) -> None:
             text=True,
         )
         skipped = subprocess.run(
-            [*auto_prepare_command(output), "--force", "--skip-investor-interactions"],
+            [*auto_prepare_command(output), "--force"],
             cwd=ROOT,
             check=False,
             capture_output=True,
             text=True,
         )
         if initial.returncode != 0 or skipped.returncode != 0:
-            errors.append(f"互动问答强制重跑跳过失败: {initial.stderr}{skipped.stderr}")
+            errors.append(f"互动问答默认关闭重跑失败: {initial.stderr}{skipped.stderr}")
             return
-        if (output / "investor_interactions.csv").exists():
-            errors.append("强制重跑跳过互动问答时未清除旧 CSV")
-        source_manifest = json.loads(
-            (output / "source_manifest.json").read_text(encoding="utf-8")
+
+        stale_path = output / "investor_interactions.csv"
+        stale_path.write_text("stale\n", encoding="utf-8")
+        source_manifest_path = output / "source_manifest.json"
+        source_manifest = json.loads(source_manifest_path.read_text(encoding="utf-8"))
+        source_manifest.setdefault("files", []).append({"file": "investor_interactions.csv"})
+        source_manifest_path.write_text(
+            json.dumps(source_manifest, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
         )
+        errors_path = output / "fetch_errors.csv"
+        error_rows = read_rows(errors_path)
+        error_rows.append(
+            {
+                "code": "600519.SH",
+                "source": "investor_interaction",
+                "stage": "investor_interaction_fetch",
+                "error": "stale output",
+            }
+        )
+        with errors_path.open("w", newline="", encoding="utf-8") as handle:
+            writer = csv.DictWriter(handle, fieldnames=["code", "source", "stage", "error"])
+            writer.writeheader()
+            writer.writerows(error_rows)
+
+        reused = subprocess.run(
+            auto_prepare_command(output),
+            cwd=ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if reused.returncode != 0:
+            errors.append(f"默认复用已有研究包失败: {reused.stderr}")
+        if stale_path.exists():
+            errors.append("默认复用时未清除陈旧互动问答 CSV")
+        if (output / "investor_interactions.csv").exists():
+            errors.append("默认关闭互动问答时未清除旧 CSV")
+        source_manifest = json.loads(source_manifest_path.read_text(encoding="utf-8"))
         if any(
             item.get("file") == "investor_interactions.csv"
             for item in source_manifest.get("files", [])
         ):
-            errors.append("强制重跑跳过互动问答时未清除旧来源清单")
+            errors.append("默认关闭互动问答时未清除旧来源清单")
         notices = read_rows(output / "fetch_errors.csv")
         if any(
             row.get("stage", "").startswith("investor_interaction")
             for row in notices
         ):
-            errors.append("强制重跑跳过互动问答时未清除旧错误记录")
+            errors.append("默认关闭互动问答时未清除旧错误记录")
+
+        included = subprocess.run(
+            [*auto_prepare_command(output), "--force", "--include-investor-interactions"],
+            cwd=ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if included.returncode != 0 or not (output / "investor_interactions.csv").is_file():
+            errors.append("显式启用互动问答时必须生成 investor_interactions.csv")
+        disabled_after_enabled = subprocess.run(
+            auto_prepare_command(output),
+            cwd=ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if disabled_after_enabled.returncode != 0:
+            errors.append(f"显式启用后默认关闭互动问答复用失败: {disabled_after_enabled.stderr}")
+        if (output / "investor_interactions.csv").exists():
+            errors.append("显式启用后再次默认关闭时未清除互动问答 CSV")
+        source_manifest = json.loads(source_manifest_path.read_text(encoding="utf-8"))
+        if any(
+            item.get("file") == "investor_interactions.csv"
+            for item in source_manifest.get("files", [])
+        ):
+            errors.append("显式启用后再次默认关闭时未清除互动问答来源清单")
+        auto_manifest = json.loads(
+            (output / "auto_prepare_manifest.json").read_text(encoding="utf-8")
+        )
+        if auto_manifest.get("inputs", {}).get("include_investor_interactions") is not False:
+            errors.append("默认关闭复用时自动准备清单未记录 include_investor_interactions=false")
+        notices = read_rows(errors_path)
+        if any(row.get("stage", "").startswith("investor_interaction") for row in notices):
+            errors.append("显式启用后再次默认关闭时未清除互动问答错误记录")
 
 
 def validate_investor_interaction_fetcher() -> list[str]:
