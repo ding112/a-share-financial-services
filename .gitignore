@@ -42,6 +42,9 @@ coverage/
 *.egg-info/
 .eggs/
 
+# Scratch / exploration artifacts
+.scratch/
+
 # Personal files
 TASKS.md
 MEMORY.md
@@ -49,3 +52,5 @@ MEMORY.md
 .playwright-mcp/
 docs/superpowers/plans
 .claude/settings.local.json
+outputs
+.claude
