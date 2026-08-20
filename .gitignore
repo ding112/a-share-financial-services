@@ -49,3 +49,7 @@ MEMORY.md
 .playwright-mcp/
 docs/superpowers/plans
 .claude/settings.local.json
+.agents
+.claude
+.scratch
+outputs
