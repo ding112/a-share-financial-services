@@ -1,0 +1,3 @@
+name: A股行业研究
+description: 用 DeepSeek 模型跑 A 股行业/主题研究：行业与主题概览、竞争格局、A 股可比公司表、想法清单，输出中文研究笔记到 ./out/<主题>/note/。persona 与 6 个研究技能来自本仓库 a-share-market-researcher agent，产物通过 validate_a_share_output_layout.py 校验。
+order: 10
