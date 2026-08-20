@@ -54,3 +54,4 @@ docs/superpowers/plans
 .claude/settings.local.json
 outputs
 .claude
+.agents/

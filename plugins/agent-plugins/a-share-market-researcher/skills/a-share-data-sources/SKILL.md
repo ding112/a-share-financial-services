@@ -35,6 +35,7 @@ description: 为 A 股研究字段映射免费或公开数据源，分类来源�
 |---|---:|---|---|
 | `official_disclosure` | S1 | 主营业务、订单、产能、客户、财务事实、风险事件、公司行动 | 行业整体规模的无来源外推 |
 | `official_statistics` | S2 | 行业规模、政策、监管、交易所市场数据、指数公开资料 | 单家公司业务暴露强弱 |
+| `licensed_terminal` | S2.5 | 授权终端口径的行情、复权、估值、财务三表、事件风险、交易行为（以实测 OK 接口为准） | 公告原文、巨潮定期报告、交易所披露；资金流/龙虎榜/大宗不得升级为业务暴露 |
 | `public_market_data` | S3 | 行情快照、估值、市值、公开财务摘要、指数或板块基础数据 | 法定披露事实、未经验证的主题暴露 |
 | `company_public_material` | S4 | IR 记录、业绩说明会、官网、投资者材料中的管理层表述 | 未披露的订单、收入、客户份额 |
 | `third_party` | S5 | 研究线索、新闻背景、待验证观点 | 核心业务暴露、核心 idea 入选依据 |
@@ -58,6 +59,7 @@ description: 为 A 股研究字段映射免费或公开数据源，分类来源�
 | AkShare 公司详情 | 主营构成、公司概况、股本结构 | `official_disclosure` / `public_market_data` | 巨潮来源优先 |
 | AkShare 北向/融资融券 | 北向资金净流入、北向持股、融资融券余额 | `public_market_data` | 最新可用期 |
 | AkShare 基金持仓 | 基金重仓股、ETF 行情 | `public_market_data` | 最新报告期 |
+| AmazingData 授权终端（F0-F5，全量 sweep OK=54/ERR=0） | 行情与复权（K线、复权因子、实时快照、交易日历、代码表/基础信息）；财务三表（利润表、资产负债表、现金流量表）；事件风险（限售解禁、股权质押、历史停复牌）；交易行为（龙虎榜、大宗交易、融资融券）；指数与行业成分；可转债（清单、转股/赎回/回售/条款） | `licensed_terminal` | 访问时间或行情时间戳；复权因子注明复权基准日；代码带市场后缀（如 `000001.SZ`）；资金流/龙虎榜/大宗只作交易行为，不升级为业务暴露 |
 
 ## AkShare 接口查询目录
 
@@ -72,6 +74,22 @@ AkShare 股票、指数、宏观、基金、债券和期货接口，只记录数
 升级为主营业务、订单、客户、产能或技术路线证据。巨潮、交易所、中证指数
 和国家统计口径的数据可以作为更高等级来源，但仍必须保留访问时间、报告期、
 公告标题、指数代码或统计口径。
+
+## AmazingData 授权终端接口查询目录
+
+当需要为 agent 选择 AmazingData 授权终端（银河「星耀数智」）可查数据能力、
+或判断哪些 S3 字段可升级为 `licensed_terminal` 时，读取
+`references/ad-http-interface-catalog.md`。该目录按研究问题整理 AmazingData
+HTTP 接口（`POST /api/{tool}`，JSON body/response）的数据类型、参数、业务
+用途、来源等级和实测状态。2026-08-20 全量 sweep 后 55 工具 OK=54、ERR=0，
+F0-F5 各模块接口均可用，F6 与业绩/分红接口为 EMPTY 待复验。
+
+AmazingData 定位为 `licensed_terminal`（S2.5）：可以升级行情、复权、估值、
+财务三表、事件风险等 S3 字段，但不得替代公告原文、巨潮定期报告或交易所
+披露作为 `official_disclosure`。资金流、龙虎榜、大宗交易只说明交易行为，
+不说明基本面，不得升级为业务暴露证据。代码带市场后缀（如 `000001.SZ`），
+复权因子需注明复权基准日，快照无时间戳不得用于排序。`AD_HTTP_BASE` 配置、
+凭证边界、单会话限制与排错见 `docs/amazingdata-http-access.md`。
 
 ## 公开数据抓取器
 
@@ -171,12 +189,12 @@ ST、`*ST` 或退市风险的公司，最多保留 15 只。少于 8 只时可�
 
 | 数据需求 | 首选免费/公开来源 | 可接受兜底 | 缺失数据行为 |
 |---|---|---|---|
-| 股票代码、简称、交易所 | AkShare 个股基础数据、交易所公司列表、腾讯行情 API 名称字段 | 用户提供股票池 | 标记 `来源缺失`，但保留用户给定代码 |
-| 最新价、涨跌幅、成交额、换手率 | 腾讯行情 API、AkShare 公开行情接口 | 东方财富或同花顺公开页面截图/摘录 | 写 `来源缺失`，不要估算 |
-| 昨收、今开、最高、最低、成交量 | 腾讯行情 API、AkShare 公开行情接口 | 用户提供行情导出 | 写 `来源缺失`，不要估算 |
+| 股票代码、简称、交易所 | AmazingData `mcp_code_list`（licensed_terminal）、AkShare 个股基础数据、交易所公司列表、腾讯行情 API 名称字段 | 用户提供股票池 | 标记 `来源缺失`，但保留用户给定代码 |
+| 最新价、涨跌幅、成交额、换手率 | AmazingData `mcp_snapshot`、`mcp_kline`（licensed_terminal） | 腾讯行情 API、AkShare 公开行情接口、东方财富或同花顺公开页面截图/摘录 | 写 `来源缺失`，不要估算 |
+| 昨收、今开、最高、最低、成交量 | AmazingData `mcp_kline`、`mcp_snapshot`（licensed_terminal） | 腾讯行情 API、AkShare 公开行情接口、用户提供行情导出 | 写 `来源缺失`，不要估算 |
 | 量比 | AkShare 公开行情接口 | 用户提供行情导出 | 写 `来源缺失`，不要用成交量自行近似 |
-| 近 5 日和近 20 日涨跌幅 | AkShare `stock_zh_a_hist(..., adjust="qfq")` 前复权收盘价自行计算，并注明计算日期 | 用户提供价格序列 | 写 `来源缺失`，不要用记忆补数，也不要写成未来收益判断 |
-| 近 60 日和近 120 日涨跌幅 | AkShare `stock_zh_a_hist(..., adjust="qfq")` 前复权收盘价自行计算，并注明计算日期 | 用户提供价格序列 | 写 `来源缺失`，不要用记忆补数，也不要写成未来收益判断 |
+| 近 5 日和近 20 日涨跌幅 | AmazingData `mcp_kline` + `mcp_backward_factor` 前复权收盘价自行计算（licensed_terminal），并注明计算日期 | AkShare `stock_zh_a_hist(..., adjust="qfq")` 前复权收盘价自行计算 | 写 `来源缺失`，不要用记忆补数，也不要写成未来收益判断 |
+| 近 60 日和近 120 日涨跌幅 | AmazingData `mcp_kline` + `mcp_backward_factor` 前复权收盘价自行计算（licensed_terminal），并注明计算日期 | AkShare `stock_zh_a_hist(..., adjust="qfq")` 前复权收盘价自行计算 | 写 `来源缺失`，不要用记忆补数，也不要写成未来收益判断 |
 | 总市值、流通市值、动态 PE | 腾讯行情 API、AkShare 估值或个股指标 | 东方财富公开页交叉核验 | 写 `来源缺失`，注明缺少估值口径 |
 | PB、PS | AkShare `stock_value_em` 的 `市销率`、AkShare 估值或个股指标、东方财富公开页交叉核验 | 用户提供数据库导出 | 写 `来源缺失`，注明缺少估值口径 |
 | 营收、净利润、扣非净利润、EPS、BPS、经营现金流/股 | AkShare `stock_financial_abstract` 最新一期摘要、东方财富数据中心、巨潮资讯定期报告 | 用户提供财务表 | 写 `来源缺失`，不要用行业均值替代 |
@@ -192,7 +210,7 @@ ST、`*ST` 或退市风险的公司，最多保留 15 只。少于 8 只时可�
 | 融资融券、北向、资金流 | 交易所融资融券数据、AkShare 资金流数据 | 东方财富公开页面 | 写 `来源缺失`，不要写方向性判断 |
 | 指数、行业、概念成分 | 中证指数公开资料、AkShare 指数和板块数据 | 东方财富和同花顺公开概念页 | 概念标签只作线索，不作暴露证据 |
 | 量比、振幅 | AkShare `stock_zh_a_spot_em` 全市场实时快照 | 用户提供行情导出 | 写 `来源缺失`，不得自行计算 |
-| 60 日、120 日收益率 | AkShare `stock_zh_a_hist` 前复权收盘价自行计算 | 用户提供价格序列 | 写 `来源缺失`，不得写成未来收益判断 |
+| 60 日、120 日收益率 | AmazingData `mcp_kline` + `mcp_backward_factor` 前复权收盘价自行计算（licensed_terminal） | AkShare `stock_zh_a_hist` 前复权收盘价自行计算、用户提供价格序列 | 写 `来源缺失`，不得写成未来收益判断 |
 | 板块异动、领涨股 | AkShare `stock_board_change_em` | 东方财富公开页面 | 用于 why-now 线索，不证明业务暴露 |
 | 涨停股票池 | AkShare `stock_zt_pool_em` | 东方财富公开页面 | 不用于基本面结论 |
 | 宏观指标 GDP/CPI/PPI/PMI | AkShare 宏观接口 (`macro_china_gdp`, `macro_china_cpi`, `macro_china_ppi`, `macro_china_pmi`) | 国家统计局公开数据 | 用于行业背景，不得外推到单家公司 |
@@ -208,6 +226,8 @@ ST、`*ST` 或退市风险的公司，最多保留 15 只。少于 8 只时可�
 | 停复牌 | AkShare `stock_tfp_em` | 东方财富公开数据 | 进入风险检查 |
 | 限售解禁 | AkShare `stock_restricted_release_summary_em` | 东方财富公开数据 | 进入风险检查 |
 | 股权质押 | AkShare `stock_gpzy_pledge_ratio_em` | 东方财富公开数据 | 进入风险检查 |
+| 涨跌停价、上市日 | AmazingData `mcp_code_info`（licensed_terminal，含 `high_limited/low_limited/list_day`） | 交易所或公告股本数据 | AkShare 弱项，写 `来源缺失`，不得用价格区间自行近似 |
+| 交易日历、假期判定 | AmazingData `mcp_calendar`（licensed_terminal） | AkShare `tool_trade_date_hist_sina` | 区间查询前置，缺失时不得假定任意日为交易日 |
 
 ## 研究数据包契约
 
@@ -311,7 +331,7 @@ ST、`*ST` 或退市风险的公司，最多保留 15 只。少于 8 只时可�
 | `return_20d` | AkShare 前复权收盘价计算的 20 个交易日收益率，单位为百分比 |
 | `return_60d` | AkShare 前复权收盘价计算的 60 个交易日收益率，单位为百分比 |
 | `return_120d` | AkShare 前复权收盘价计算的 120 个交易日收益率，单位为百分比 |
-| `return_basis` | 短期表现来源和计算口径，例如 `AkShare 前复权收盘价，截至 <日期>` |
+| `return_basis` | 短期表现来源和计算口径，例如 `AmazingData mcp_kline+mcp_backward_factor 前复权，截至 <日期>` 或 `AkShare 前复权收盘价，截至 <日期>` |
 | `snapshot_time` | 行情时间戳或访问时间 |
 | `basis` | 快照、收盘、前复权、未复权或用户提供口径 |
 

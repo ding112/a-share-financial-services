@@ -91,9 +91,12 @@ class AdHttpError(RuntimeError):
 
 
 class AdHttpClient:
-    def __init__(self, base: str, timeout: float = 60.0):
+    def __init__(self, base: str, timeout: float = 60.0, capture_dir: str | None = None):
         self.base = base.rstrip("/")
         self.timeout = timeout
+        # When set, dump raw request + response (incl. HTTP status and body)
+        # for every failing call to <capture_dir>/<tool>.<n>.json for troubleshooting.
+        self.capture_dir = Path(capture_dir) if capture_dir else None
 
     def health(self) -> dict:
         with urllib.request.urlopen(self.base + "/", timeout=self.timeout) as r:
@@ -132,13 +135,49 @@ class AdHttpClient:
                 payload = json.loads(e.read().decode("utf-8"))
             except Exception:
                 payload = {"detail": e.reason or str(e)}
+            self._capture_failure(tool, url, body, status, payload)
             raise self._http_failure(tool, payload, status) from e
         except urllib.error.URLError as e:
+            self._capture_failure(tool, url, body, "url_error", {"detail": str(e.reason)})
             raise AdHttpError(f"无法连接 AmazingData HTTP 服务 {self.base}: {e.reason}") from e
 
         if isinstance(payload, dict) and payload.get("success") is False:
+            self._capture_failure(tool, url, body, status, payload)
             raise self._http_failure(tool, payload, status)
         return payload
+
+    def _capture_failure(self, tool, url, body, status, payload) -> None:
+        """Persist raw request/response for a failed call for offline diagnosis.
+
+        Writes two artifacts under capture_dir:
+          - <tool>.<n>.json   per-call record
+          - failures.json     append-only combined list of all failures
+        """
+        if not self.capture_dir:
+            return
+        self.capture_dir.mkdir(parents=True, exist_ok=True)
+        n = 0
+        while (self.capture_dir / f"{tool}.{n}.json").exists():
+            n += 1
+        record = {
+            "tool": tool,
+            "url": url,
+            "status": status,
+            "request_body": body.decode("utf-8", errors="replace"),
+            "response": payload,
+        }
+        (self.capture_dir / f"{tool}.{n}.json").write_text(
+            json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")
+        combined = self.capture_dir / "failures.json"
+        try:
+            existing = json.loads(combined.read_text(encoding="utf-8")) if combined.exists() else []
+            if not isinstance(existing, list):
+                existing = []
+        except (OSError, json.JSONDecodeError):
+            existing = []
+        existing.append(record)
+        combined.write_text(
+            json.dumps(existing, ensure_ascii=False, indent=2), encoding="utf-8")
 
     @staticmethod
     def _http_failure(tool, payload, status):
