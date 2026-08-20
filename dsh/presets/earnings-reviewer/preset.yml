@@ -1,0 +1,3 @@
+name: 财报评审
+description: 用 DeepSeek 模型端到端处理财报事件：读电话会与公告、更新覆盖模型、草拟财报后研究笔记。persona 与 6 个研究技能（含投资/建模技能）来自本仓库 earnings-reviewer agent，DSH preset 形态。
+order: 12

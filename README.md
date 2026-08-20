@@ -155,6 +155,21 @@ docs/                        # 更细的本地使用说明
 `scripts/check.py` 会检查 manifests、跨文件引用、Managed Agent 模板、Codex
 marketplace，以及 agent bundle skill 是否与 vertical source 保持一致。
 
+### 用 DeepSeek Harness（DSH）跑 FSI agent
+
+仓库把 6 个 FSI agent 各定义成 DSH preset，可在不受 Claude Code 宿主约束的情况下
+用 DeepSeek 模型跑研究/建模/投行材料：
+
+```bash
+cd <本仓库根>
+bash dsh/install-presets.sh       # 安装全部 6 个 preset 到 ~/.dsh/.agent-presets/
+dsh --profile web                  # 在仓库根启动，preset 选择器选对应 agent
+```
+
+详见 [`dsh/README.md`](./dsh/README.md)。persona 由安装脚本从
+`plugins/agent-plugins/<slug>/agents/<slug>.md` 生成（单一事实源），技能指向各
+agent 的 bundled skills，`scripts/check.py` 会守卫 preset 与 persona 源不漂移。
+
 ## 许可证
 
 本项目使用 [Apache License 2.0](./LICENSE)。

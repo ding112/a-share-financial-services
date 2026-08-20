@@ -90,6 +90,48 @@ def approved_codex_plugin_dirs() -> dict[str, Path]:
     return plugins
 
 
+def check_dsh_presets() -> int:
+    """Guard the DSH agent presets (dsh/presets/<slug>/) against drift.
+
+    For every FSI agent plugin there must be a matching preset whose
+    agent.cordis.yml keeps the __PERSONA_TEXT__ placeholder (persona is injected
+    at install time, see dsh/persona.py) and whose customSkillDirs target — the
+    bundled skills root plugins/agent-plugins/<slug>/skills — still exists.
+    preset.yml must parse. Returns the number of presets examined.
+    """
+    dsh_dir = ROOT / "dsh" / "presets"
+    if not dsh_dir.is_dir():
+        return 0
+    agent_slugs = {p.name for p in agent_plugin_dirs()}
+    preset_slugs = sorted(p.name for p in dsh_dir.iterdir() if p.is_dir())
+
+    for s in sorted(agent_slugs - set(preset_slugs)):
+        err(f"dsh preset missing: plugins/agent-plugins/{s} has no dsh/presets/{s}")
+
+    for s in preset_slugs:
+        preset = dsh_dir / s
+        cordis = preset / "agent.cordis.yml"
+        if not cordis.is_file():
+            err(f"dsh preset: missing {rel(cordis)}")
+            continue
+        text = cordis.read_text()
+        if "__PERSONA_TEXT__" not in text:
+            err(f"dsh preset: {rel(cordis)} lost the __PERSONA_TEXT__ placeholder")
+        skills_root = PLUGINS / "agent-plugins" / s / "skills"
+        if not skills_root.is_dir():
+            err(f"dsh preset: {rel(skills_root)} (customSkillDirs target) missing for {rel(cordis)}")
+        meta = preset / "preset.yml"
+        if meta.is_file():
+            try:
+                yaml.safe_load(meta.read_text())
+            except yaml.YAMLError as e:
+                err(f"dsh preset YAML parse: {rel(meta)}: {e}")
+        else:
+            err(f"dsh preset: missing {rel(meta)}")
+
+    return len(preset_slugs)
+
+
 # --- 1. YAML parse ----------------------------------------------------------
 for yml in sorted(MANAGED.rglob("*.yaml")):
     checked += 1
@@ -417,6 +459,8 @@ for dashboard_error in validate_dashboard():
 
 for output_layout_error in validate_output_layout():
     err(output_layout_error)
+
+checked += check_dsh_presets()
 
 # --- report ----------------------------------------------------------------
 if errors:

@@ -1,0 +1,3 @@
+name: 金融模型构建
+description: 用 DeepSeek 模型从 ticker 与假设集在 Excel 里构建 DCF、LBO、三表模型与可比交易模型。persona 与 6 个建模技能来自本仓库 model-builder agent，DSH preset 形态。
+order: 14

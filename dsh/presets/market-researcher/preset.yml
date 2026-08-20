@@ -1,0 +1,3 @@
+name: 行业研究
+description: 用 DeepSeek 模型跑行业/主题研究：行业概览、竞争格局、可比公司表、想法 shortlist，可附幻灯片。persona 与 5 个研究技能来自本仓库 market-researcher agent，DSH preset 形态。
+order: 13

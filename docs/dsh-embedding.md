@@ -348,16 +348,24 @@ require('fs').writeFileSync(h+'/.dsh/profiles/fsi/package.json',JSON.stringify(p
 dsh --profile fsi --dump-config | head -40   # 校验合成树
 ```
 
-`dsh/presets.install.sh`：
+`dsh/install-presets.sh`（通用 preset 安装器，仓库内实现的脚本；蓝图曾设想为
+`presets.install.sh`，落地名以此为准）：
 
 ```bash
-mkdir -p ~/.dsh/.agent-presets
-cp -r dsh/presets/* ~/.dsh/.agent-presets/
+bash dsh/install-presets.sh            # 安装全部 6 个 FSI agent preset
+bash dsh/install-presets.sh <slug>     # 只安装某一个
 ```
 
-`scripts/check.py` 增加一条校验：`dsh/presets/<slug>/agent.cordis.yml` 的
-persona 文本与 `plugins/agent-plugins/<slug>/agents/<slug>.md` 保持同步，防止
-漂移。与现有的 agent bundle skill 漂移检查同构。
+脚本会校验凭据（`DEEPSEEK_API_KEY` 或 `~/.dsh/.credentials.yaml`）→ 把
+`dsh/presets/<slug>/` 拷到 `~/.dsh/.agent-presets/<slug>/` → 用 `dsh/persona.py`
+把 `plugins/agent-plugins/<slug>/agents/<slug>.md` 去 frontmatter 后的正文注入
+`agent.cordis.yml` 的 `__PERSONA_TEXT__` 占位符。`install-mvp.sh` 是它的向后兼容
+包装（等价于只装 a-share）。
+
+`scripts/check.py` 已增加 `check_dsh_presets()`：校验 `dsh/presets/<slug>/` 与
+`plugins/agent-plugins/<slug>/` 一一对应、`agent.cordis.yml` 保留
+`__PERSONA_TEXT__` 占位符、`customSkillDirs` 指向的 bundled skills 根存在、
+`preset.yml` 可解析——防止 preset 与 persona 源漂移。
 
 ## 启动与验证
 
@@ -368,7 +376,7 @@ persona 文本与 `plugins/agent-plugins/<slug>/agents/<slug>.md` 保持同步�
 python3 -m venv .venv && . .venv/bin/activate && pip install -r requirements.txt
 
 # 2. 建 profile 并安装预设
-bash dsh/profile.install.sh && bash dsh/presets.install.sh
+bash dsh/profile.install.sh && bash dsh/install-presets.sh
 
 # 3. 启动 GUI
 dsh --profile fsi
